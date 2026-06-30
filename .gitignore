@@ -6,3 +6,4 @@ __pycache__/
 .venv/
 .wwebjs_auth/
 qr-code.png
+.wwebjs_cache/
