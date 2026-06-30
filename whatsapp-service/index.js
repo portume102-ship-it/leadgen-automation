@@ -14,7 +14,14 @@ const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '.wwebjs_auth' }),
   puppeteer: {
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
+      (() => {
+        const { execSync } = require('child_process');
+        try { return execSync('which chromium').toString().trim(); } catch(e) {}
+        try { return execSync('which chromium-browser').toString().trim(); } catch(e) {}
+        try { return execSync('which google-chrome-stable').toString().trim(); } catch(e) {}
+        return undefined;
+      })(),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
