@@ -109,6 +109,23 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', whatsapp_ready: isReady });
 });
 
+app.get('/diagnostics', async (_req, res) => {
+  try {
+    const state = await client.getState().catch(e => `error: ${e.message}`);
+    const pageMetrics = client.pupPage ? await client.pupPage.metrics().catch(e => `error: ${e.message}`) : 'no page';
+    res.json({
+      isReady,
+      isStable,
+      client_state: state,
+      page_exists: !!client.pupPage,
+      page_metrics: pageMetrics,
+      wid: client.info?.wid?.user || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/status', (_req, res) => {
   res.json({
     whatsapp_ready: isReady,
@@ -193,6 +210,21 @@ app.post('/send', async (req, res) => {
   const chatId = `${cleanedPhone}@c.us`;
 
   console.log(`📤 Sending message to ${chatId}...`);
+
+  try {
+    const state = await client.getState();
+    addLog('info', `Pre-send client state: ${state}`);
+  } catch (e) {
+    addLog('warn', `Could not get client state: ${e.message}`);
+  }
+
+  try {
+    const info = client.info;
+    addLog('info', `Pre-send wid: ${info?.wid?.user || 'unknown'}, pushname: ${info?.pushname || 'unknown'}`);
+  } catch (e) {
+    addLog('warn', `Could not read client.info: ${e.message}`);
+  }
+
   const sendStartTime = Date.now();
   try {
     const sendPromise = client.sendMessage(chatId, message);
