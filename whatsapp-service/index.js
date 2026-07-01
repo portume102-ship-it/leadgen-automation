@@ -10,6 +10,7 @@ const { execSync } = require('child_process');
 const QR_FILE = path.join(__dirname, 'qr.txt');
 
 let isReady = false;
+let isStable = false;
 
 const MAX_LOGS = 200;
 const eventLog = [];
@@ -46,6 +47,10 @@ client.on('qr', (qr) => {
 });
 
 client.on('loading_screen', (percent, message) => {
+  if (isReady) {
+    isStable = false;
+    addLog('warn', `Page reloading after ready (${percent}%) — sends paused`);
+  }
   addLog('info', `Loading WhatsApp: ${percent}% - ${message}`);
   console.log(`⏳ Loading WhatsApp: ${percent}% - ${message}`);
 });
@@ -59,10 +64,15 @@ client.on('authenticated', () => {
 client.on('ready', () => {
   addLog('success', 'WhatsApp client ready');
   isReady = true;
+  isStable = false;
   console.log('✅ WhatsApp client ready');
   if (fs.existsSync(QR_FILE)) {
     fs.unlinkSync(QR_FILE);
   }
+  setTimeout(() => {
+    isStable = true;
+    addLog('info', 'Client stabilized, ready for sends');
+  }, 8000);
 });
 
 client.on('auth_failure', (msg) => {
@@ -174,6 +184,9 @@ app.post('/send', async (req, res) => {
 
   if (!isReady) {
     return res.status(503).json({ success: false, error: 'WhatsApp not ready. Scan QR first.' });
+  }
+  if (!isStable) {
+    return res.status(503).json({ success: false, error: 'WhatsApp session is stabilizing, retry in a few seconds' });
   }
 
   const cleanedPhone = String(phone).replace(/\D/g, '');
