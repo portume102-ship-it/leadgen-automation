@@ -4,7 +4,15 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode-terminal');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion;
+
+async function loadBaileys() {
+  const baileys = await import('@whiskeysockets/baileys');
+  makeWASocket = baileys.default;
+  useMultiFileAuthState = baileys.useMultiFileAuthState;
+  DisconnectReason = baileys.DisconnectReason;
+  fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+}
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
 
@@ -32,6 +40,16 @@ let sock = null;
 async function startWhatsApp() {
   if (isInitializing) return;
   isInitializing = true;
+  if (!makeWASocket) {
+    try {
+      await loadBaileys();
+    } catch (e) {
+      isInitializing = false;
+      addLog('error', `Failed to load Baileys module: ${e.message}`);
+      console.error('❌ Failed to load Baileys module:', e.message);
+      return;
+    }
+  }
   addLog('info', 'Starting WhatsApp connection using Baileys...');
   try {
     const { state, saveCreds } = await useMultiFileAuthState('/app/.wwebjs_auth');
