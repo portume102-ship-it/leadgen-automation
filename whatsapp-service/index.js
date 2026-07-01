@@ -27,6 +27,12 @@ const client = new Client({
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-profile-locking',
+      '--remote-debugging-port=0',
     ],
   },
   webVersionCache: {
@@ -65,6 +71,32 @@ client.on('auth_failure', (msg) => {
 client.on('disconnected', (reason) => {
   isReady = false;
   console.log('⚠️ WhatsApp disconnected:', reason);
+});
+
+// Clean up stale Chromium lock files before initializing
+const lockPaths = [
+  '/app/.wwebjs_auth/Default/SingletonLock',
+  '/app/.wwebjs_auth/Default/SingletonCookie',
+  '/app/.wwebjs_auth/Default/SingletonSocket',
+  '/app/.wwebjs_auth/session-session/Default/SingletonLock',
+  '/app/.wwebjs_auth/session-session/Default/SingletonCookie',
+  '/app/.wwebjs_auth/session-session/Default/SingletonSocket',
+  path.join(__dirname, '.wwebjs_auth', 'session-session', 'Default', 'SingletonLock'),
+  path.join(__dirname, '.wwebjs_auth', 'session-session', 'Default', 'SingletonCookie'),
+  path.join(__dirname, '.wwebjs_auth', 'session-session', 'Default', 'SingletonSocket'),
+  path.join(__dirname, '.wwebjs_auth', 'Default', 'SingletonLock'),
+  path.join(__dirname, '.wwebjs_auth', 'Default', 'SingletonCookie'),
+  path.join(__dirname, '.wwebjs_auth', 'Default', 'SingletonSocket'),
+];
+lockPaths.forEach(p => {
+  try {
+    if (fs.existsSync(p)) {
+      fs.unlinkSync(p);
+      console.log(`🧹 Cleared stale lock: ${p}`);
+    }
+  } catch (err) {
+    console.warn(`Could not delete stale lock at ${p}:`, err.message);
+  }
 });
 
 console.log('🚀 Initializing WhatsApp client...');

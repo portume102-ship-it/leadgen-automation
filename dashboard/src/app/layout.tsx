@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description: "View and manage leads from the LeadGen automation pipeline",
 };
 
+import LayoutClient from './layout-client';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,7 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <LayoutClient>{children}</LayoutClient>
       </body>
     </html>
   );
