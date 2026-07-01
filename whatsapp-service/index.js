@@ -128,6 +128,35 @@ app.get('/qr', (_req, res) => {
   res.type('text/plain').send(qrContent);
 });
 
+app.get('/qr-scan', (_req, res) => {
+  if (!fs.existsSync(QR_FILE)) {
+    return res.send(`<html><body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:50px">
+      <h2>No QR available</h2>
+      <p>WhatsApp may already be authenticated, or QR hasn't generated yet.</p>
+      <p><a href="/health" style="color:#25D366">Check health status</a></p>
+      <script>setTimeout(()=>location.reload(),3000)</script>
+    </body></html>`);
+  }
+  const qrContent = fs.readFileSync(QR_FILE, 'utf8');
+  res.send(`<html><head><title>WhatsApp QR</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  </head>
+  <body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:50px">
+    <h2>📱 Scan with WhatsApp</h2>
+    <p>Open WhatsApp → Linked Devices → Link a Device</p>
+    <div id="qrcode" style="display:inline-block;background:white;padding:20px;border-radius:12px;margin:20px"></div>
+    <p style="color:#888">Page auto-refreshes every 15 seconds</p>
+    <script>
+      new QRCode(document.getElementById("qrcode"), {
+        text: ${JSON.stringify(qrContent)},
+        width: 256,
+        height: 256
+      });
+    </script>
+    <script>setTimeout(()=>location.reload(),15000)</script>
+  </body></html>`);
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 WhatsApp service running on port ${PORT}`);
 });
