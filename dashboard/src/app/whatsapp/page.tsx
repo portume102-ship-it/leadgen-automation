@@ -21,6 +21,10 @@ export default function WhatsappManagerPage() {
   const [testPhone, setTestPhone] = useState('')
   const [testMessage, setTestMessage] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
+  const sendAbortRef = React.useRef<AbortController | null>(null)
+
+  // Disconnect state
+  const [disconnecting, setDisconnecting] = useState(false)
 
   // Recent messages state
   const [recentSent, setRecentSent] = useState<Lead[]>([])
@@ -250,6 +254,27 @@ export default function WhatsappManagerPage() {
     }
   }, [connected])
 
+  // Disconnect handler
+  async function handleDisconnect() {
+    if (!confirm('This will log out WhatsApp. You\'ll need to scan a new QR to reconnect. Continue?')) return
+    setDisconnecting(true)
+    const toastId = toast.loading('Disconnecting WhatsApp...')
+    try {
+      const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Disconnect failed')
+      }
+      toast.success('Disconnected — scan a new QR to reconnect', { id: toastId })
+      fetchStatus()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Disconnect failed'
+      toast.error(message, { id: toastId })
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
   // 4. Send Test Message
   async function sendTestMessage(e: React.FormEvent) {
     e.preventDefault()
@@ -265,6 +290,9 @@ export default function WhatsappManagerPage() {
       return
     }
 
+    const controller = new AbortController()
+    sendAbortRef.current = controller
+
     setSendingTest(true)
     const toastId = toast.loading('Sending test WhatsApp message...')
     try {
@@ -272,6 +300,7 @@ export default function WhatsappManagerPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: digitsOnly, message: testMessage }),
+        signal: controller.signal,
       })
 
       const data = await res.json()
@@ -293,6 +322,10 @@ export default function WhatsappManagerPage() {
       setTestMessage('')
       fetchRecentSent()
     } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        toast('Send cancelled', { id: toastId, icon: '🚫' })
+        return
+      }
       const message = err instanceof Error ? err.message : 'Failed to send message'
       if (message.toLowerCase().includes('timed out')) {
         toast.error('Send timed out, WhatsApp service may be overloaded', { id: toastId })
@@ -300,6 +333,7 @@ export default function WhatsappManagerPage() {
         toast.error(message, { id: toastId })
       }
     } finally {
+      sendAbortRef.current = null
       setSendingTest(false)
     }
   }
@@ -339,17 +373,28 @@ export default function WhatsappManagerPage() {
               Last checked: {lastChecked ? lastChecked.toLocaleTimeString() : 'Never'}
             </p>
           </div>
-          <button
-            onClick={() => {
-              setLoadingStatus(true)
-              fetchStatus()
-              fetchRecentSent()
-              toast.success('Status refreshed')
-            }}
-            className="mt-6 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 text-sm font-semibold text-white py-2.5 transition-colors"
-          >
-            Refresh Status
-          </button>
+          <div className="mt-6 flex flex-col gap-2">
+            <button
+              onClick={() => {
+                setLoadingStatus(true)
+                fetchStatus()
+                fetchRecentSent()
+                toast.success('Status refreshed')
+              }}
+              className="rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 text-sm font-semibold text-white py-2.5 transition-colors"
+            >
+              Refresh Status
+            </button>
+            {connected && (
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="rounded-lg bg-red-950/60 border border-red-900 hover:bg-red-900/40 disabled:opacity-40 text-xs font-semibold text-red-300 py-2.5 transition-colors"
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Section 2 - QR Code (only shown when disconnected) */}
@@ -409,14 +454,25 @@ export default function WhatsappManagerPage() {
               className="w-full rounded-lg bg-gray-950 border border-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
             />
           </div>
-          <button
-            type="submit"
-            disabled={sendingTest || !connected}
-            className="flex items-center justify-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold text-white px-6 py-2.5 transition-colors"
-          >
-            {sendingTest && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            Send Test Message
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={sendingTest || !connected}
+              className="flex items-center justify-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold text-white px-6 py-2.5 transition-colors"
+            >
+              {sendingTest && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              Send Test Message
+            </button>
+            {sendingTest && (
+              <button
+                type="button"
+                onClick={() => sendAbortRef.current?.abort()}
+                className="rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs font-semibold text-gray-300 px-4 py-2.5 transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
           {!connected && (
             <p className="text-xs text-red-400">Connect WhatsApp above before sending</p>
           )}
