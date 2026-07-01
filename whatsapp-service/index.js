@@ -4,8 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode-terminal');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const { execSync } = require('child_process');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const { Boom } = require('@hapi/boom');
 
 const QR_FILE = path.join(__dirname, 'qr.txt');
 
@@ -26,93 +27,76 @@ function addLog(level, message) {
   if (eventLog.length > MAX_LOGS) eventLog.shift();
 }
 
-const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: '/app/.wwebjs_auth' }),
-  puppeteer: {
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    protocolTimeout: 120000,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-background-networking',
-      '--disable-default-apps',
-      '--disable-sync',
-      '--metrics-recording-only',
-      '--mute-audio',
-      '--no-first-run',
-      '--single-process',
-      '--no-zygote',
-    ],
-  },
-});
+let sock = null;
 
-client.on('qr', (qr) => {
-  qrGeneratedAt = new Date().toISOString();
-  addLog('info', 'QR code generated, saved to qr.txt');
-  qrcode.generate(qr, { small: true });
-  fs.writeFileSync(QR_FILE, qr, 'utf8');
-  console.log('📱 QR code saved to qr.txt — scan with WhatsApp');
-});
+async function startWhatsApp() {
+  if (isInitializing) return;
+  isInitializing = true;
+  addLog('info', 'Starting WhatsApp connection using Baileys...');
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState('/app/.wwebjs_auth');
+    const { version } = await fetchLatestBaileysVersion();
 
-client.on('loading_screen', (percent, message) => {
-  if (isReady) {
-    isStable = false;
-    addLog('warn', `Page reloading after ready (${percent}%) — sends paused`);
+    sock = makeWASocket({
+      version,
+      auth: state,
+      logger: pino({ level: 'silent' }),
+      printQRInTerminal: false,
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        qrGeneratedAt = new Date().toISOString();
+        addLog('info', 'QR code generated, saved to qr.txt');
+        fs.writeFileSync(QR_FILE, qr, 'utf8');
+        qrcode.generate(qr, { small: true });
+        console.log('📱 QR code saved to qr.txt — scan with WhatsApp');
+      }
+
+      if (connection === 'open') {
+        isReady = true;
+        isStable = false;
+        isInitializing = false;
+        sessionAuthenticatedAt = new Date().toISOString();
+        addLog('success', 'WhatsApp client ready');
+        console.log('✅ WhatsApp client ready');
+        if (fs.existsSync(QR_FILE)) fs.unlinkSync(QR_FILE);
+        setTimeout(() => {
+          isStable = true;
+          addLog('info', 'Client stabilized, ready for sends');
+        }, 3000);
+      }
+
+      if (connection === 'close') {
+        isReady = false;
+        isStable = false;
+        isInitializing = false;
+        const statusCode = lastDisconnect?.error instanceof Boom 
+          ? lastDisconnect.error.output.statusCode 
+          : null;
+        const reason = lastDisconnect?.error?.message || 'unknown';
+        lastDisconnectReason = reason;
+        addLog('warn', `Disconnected: ${reason}`);
+        console.log(`⚠️ WhatsApp disconnected: ${reason}`);
+
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          addLog('info', 'Reconnecting...');
+          setTimeout(() => startWhatsApp(), 2000);
+        } else {
+          addLog('warn', 'Logged out — will not auto-reconnect. Scan new QR via /qr-image after restart.');
+        }
+      }
+    });
+  } catch (err) {
+    isInitializing = false;
+    addLog('error', `Initialization failed: ${err.message}`);
+    console.error('❌ WhatsApp init failed:', err.message);
   }
-  addLog('info', `Loading WhatsApp: ${percent}% - ${message}`);
-  console.log(`⏳ Loading WhatsApp: ${percent}% - ${message}`);
-});
-
-client.on('authenticated', () => {
-  sessionAuthenticatedAt = new Date().toISOString();
-  addLog('success', 'Authenticated — session saved');
-  console.log('🔐 Authenticated — session saved');
-});
-
-client.on('ready', () => {
-  isInitializing = false;
-  addLog('success', 'WhatsApp client ready');
-  isReady = true;
-  isStable = false;
-  console.log('✅ WhatsApp client ready');
-  if (fs.existsSync(QR_FILE)) {
-    fs.unlinkSync(QR_FILE);
-  }
-  setTimeout(() => {
-    isStable = true;
-    addLog('info', 'Client stabilized, ready for sends');
-  }, 8000);
-});
-
-client.on('auth_failure', (msg) => {
-  isInitializing = false;
-  addLog('error', `Auth failure: ${msg}`);
-  console.error('❌ Auth failure:', msg);
-  isReady = false;
-});
-
-client.on('disconnected', (reason) => {
-  isInitializing = false;
-  lastDisconnectReason = reason;
-  addLog('warn', `Disconnected: ${reason}`);
-  isReady = false;
-  console.log('⚠️ WhatsApp disconnected:', reason);
-});
-
-const QRCode = require('qrcode');
-
-// Synchronously delete all Chromium lock files before init
-try {
-  execSync('find /app/.wwebjs_auth -name "Singleton*" -delete 2>/dev/null || true');
-  execSync('find /app/.wwebjs_auth -name "*.lock" -delete 2>/dev/null || true');
-  execSync('find /app/.wwebjs_auth -name "lockfile" -delete 2>/dev/null || true');
-  console.log('🧹 Cleared stale Chromium lock files');
-} catch(e) {
-  console.log('🧹 Lock cleanup skipped:', e.message);
 }
 
 const app = express();
@@ -126,34 +110,22 @@ app.get('/health', (_req, res) => {
 
 app.get('/diagnostics', async (_req, res) => {
   try {
-    const state = await client.getState().catch(e => `error: ${e.message}`);
-    const pageMetrics = client.pupPage ? await client.pupPage.metrics().catch(e => `error: ${e.message}`) : 'no page';
     res.json({
       isReady,
       isStable,
-      client_state: state,
-      page_exists: !!client.pupPage,
-      page_metrics: pageMetrics,
-      wid: client.info?.wid?.user || null,
+      client_state: isReady ? 'open' : 'closed',
+      page_exists: false,
+      page_metrics: null,
+      wid: sock?.user?.id || null,
+      user_info: sock?.user || null
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/store-check', async (_req, res) => {
-  try {
-    if (!client.pupPage) return res.json({ store_ready: false, reason: 'no page' });
-    const result = await Promise.race([
-      client.pupPage.evaluate(() => {
-        return typeof window.Store !== 'undefined' && typeof window.Store.Chat !== 'undefined';
-      }),
-      new Promise((resolve) => setTimeout(() => resolve('timeout'), 10000))
-    ]);
-    res.json({ store_ready: result === true, raw_result: result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get('/store-check', (_req, res) => {
+  res.json({ store_ready: isReady && isStable, connection_state: isReady ? 'open' : 'closed' });
 });
 
 app.get('/status', (_req, res) => {
@@ -182,17 +154,16 @@ app.post('/reconnect', (req, res) => {
   }
   addLog('warn', 'Manual reconnect triggered from dashboard');
   try {
-    client.logout().catch(() => {}).finally(() => {
-      isReady = false;
-      sessionAuthenticatedAt = null;
-      isInitializing = true;
-      setTimeout(() => {
-        client.initialize().catch(err => {
-          console.error('❌ WhatsApp init failed:', err.message);
-          isInitializing = false;
-        });
-      }, 1000);
-    });
+    if (sock) {
+      sock.logout().catch(() => {}).finally(() => {
+        isReady = false;
+        isStable = false;
+        sessionAuthenticatedAt = null;
+        setTimeout(() => startWhatsApp(), 1000);
+      });
+    } else {
+      setTimeout(() => startWhatsApp(), 1000);
+    }
     res.json({ success: true, message: 'Reconnect initiated' });
   } catch (err) {
     addLog('error', `Reconnect failed: ${err.message}`);
@@ -207,8 +178,11 @@ app.post('/disconnect', async (req, res) => {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
   try {
-    await client.logout();
+    if (sock) {
+      await sock.logout().catch(() => {});
+    }
     isReady = false;
+    isStable = false;
     if (fs.existsSync(QR_FILE)) fs.unlinkSync(QR_FILE);
     addLog('warn', 'Manual disconnect — logged out, no auto-reconnect');
     sessionAuthenticatedAt = null;
@@ -242,7 +216,7 @@ app.post('/send', async (req, res) => {
     return res.status(429).json({ success: false, error: 'Another send is already in progress, try again shortly' });
   }
 
-  if (!isReady) {
+  if (!isReady || !sock) {
     return res.status(503).json({ success: false, error: 'WhatsApp not ready. Scan QR first.' });
   }
   if (!isStable) {
@@ -250,42 +224,31 @@ app.post('/send', async (req, res) => {
   }
 
   const cleanedPhone = String(phone).replace(/\D/g, '');
-  const chatId = `${cleanedPhone}@c.us`;
+  const jid = `${cleanedPhone}@s.whatsapp.net`;
 
-  console.log(`📤 Sending message to ${chatId}...`);
+  console.log(`📤 Sending message to ${jid}...`);
 
-  try {
-    const state = await client.getState();
-    addLog('info', `Pre-send client state: ${state}`);
-  } catch (e) {
-    addLog('warn', `Could not get client state: ${e.message}`);
-  }
-
-  try {
-    const info = client.info;
-    addLog('info', `Pre-send wid: ${info?.wid?.user || 'unknown'}, pushname: ${info?.pushname || 'unknown'}`);
-  } catch (e) {
-    addLog('warn', `Could not read client.info: ${e.message}`);
-  }
+  addLog('info', `Pre-send client state: open`);
+  addLog('info', `Pre-send wid: ${sock.user?.id || 'unknown'}, pushname: ${sock.user?.name || 'unknown'}`);
 
   sendInProgress = true;
   const sendStartTime = Date.now();
   try {
-    const sendPromise = client.sendMessage(chatId, message);
+    const sendPromise = sock.sendMessage(jid, { text: message });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Send timed out after 45s')), 45000)
     );
 
     await Promise.race([sendPromise, timeoutPromise]);
     const sendDuration = Date.now() - sendStartTime;
-    addLog('info', `Message sent in ${sendDuration}ms to ${chatId}`);
-    console.log(`✅ Message sent to ${chatId}`);
-    return res.status(200).json({ success: true, chatId });
+    addLog('info', `Message sent in ${sendDuration}ms to ${jid}`);
+    console.log(`✅ Message sent to ${jid}`);
+    return res.status(200).json({ success: true, chatId: jid });
   } catch (error) {
     console.error('❌ Send failed:', error.message);
     if (error.message === 'Send timed out after 45s') {
       const sendDuration = Date.now() - sendStartTime;
-      addLog('error', `Send timed out after ${sendDuration}ms to ${chatId}`);
+      addLog('error', `Send timed out after ${sendDuration}ms to ${jid}`);
       return res.status(504).json({ success: false, error: 'Send timed out after 45s' });
     }
     return res.status(500).json({ success: false, error: error.message });
@@ -304,6 +267,8 @@ app.get('/qr', (_req, res) => {
   const qrContent = fs.readFileSync(QR_FILE, 'utf8');
   res.type('text/plain').send(qrContent);
 });
+
+const QRCode = require('qrcode');
 
 app.get('/qr-image', async (_req, res) => {
   if (!fs.existsSync(QR_FILE)) {
@@ -353,10 +318,6 @@ app.listen(PORT, () => {
   console.log(`🌐 WhatsApp service running on port ${PORT}`);
   console.log('🚀 Initializing WhatsApp client...');
   if (!isInitializing) {
-    isInitializing = true;
-    client.initialize().catch(err => {
-      console.error('❌ WhatsApp init failed:', err.message);
-      isInitializing = false;
-    });
+    startWhatsApp();
   }
 });
