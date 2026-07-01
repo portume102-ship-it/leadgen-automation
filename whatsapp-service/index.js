@@ -12,6 +12,7 @@ const QR_FILE = path.join(__dirname, 'qr.txt');
 let isReady = false;
 let isStable = false;
 let sendInProgress = false;
+let isInitializing = false;
 
 const MAX_LOGS = 200;
 const eventLog = [];
@@ -63,6 +64,7 @@ client.on('authenticated', () => {
 });
 
 client.on('ready', () => {
+  isInitializing = false;
   addLog('success', 'WhatsApp client ready');
   isReady = true;
   isStable = false;
@@ -77,12 +79,14 @@ client.on('ready', () => {
 });
 
 client.on('auth_failure', (msg) => {
+  isInitializing = false;
   addLog('error', `Auth failure: ${msg}`);
   console.error('❌ Auth failure:', msg);
   isReady = false;
 });
 
 client.on('disconnected', (reason) => {
+  isInitializing = false;
   lastDisconnectReason = reason;
   addLog('warn', `Disconnected: ${reason}`);
   isReady = false;
@@ -163,12 +167,21 @@ app.post('/reconnect', (req, res) => {
   if (apiSecret !== expectedSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (isInitializing) {
+    return res.status(429).json({ success: false, error: 'Initialization is already in progress' });
+  }
   addLog('warn', 'Manual reconnect triggered from dashboard');
   try {
     client.logout().catch(() => {}).finally(() => {
       isReady = false;
       sessionAuthenticatedAt = null;
-      setTimeout(() => client.initialize(), 1000);
+      isInitializing = true;
+      setTimeout(() => {
+        client.initialize().catch(err => {
+          console.error('❌ WhatsApp init failed:', err.message);
+          isInitializing = false;
+        });
+      }, 1000);
     });
     res.json({ success: true, message: 'Reconnect initiated' });
   } catch (err) {
@@ -329,9 +342,11 @@ app.get('/qr-scan', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`🌐 WhatsApp service running on port ${PORT}`);
   console.log('🚀 Initializing WhatsApp client...');
-  try {
-    client.initialize();
-  } catch(err) {
-    console.error('❌ WhatsApp init failed:', err.message);
+  if (!isInitializing) {
+    isInitializing = true;
+    client.initialize().catch(err => {
+      console.error('❌ WhatsApp init failed:', err.message);
+      isInitializing = false;
+    });
   }
 });
