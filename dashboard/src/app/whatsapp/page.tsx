@@ -275,16 +275,30 @@ export default function WhatsappManagerPage() {
       })
 
       const data = await res.json()
+
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to send message')
+        if (res.status === 503) {
+          toast.error('WhatsApp not connected — scan the QR code first', { id: toastId })
+        } else if (res.status === 504 || (data.error && String(data.error).toLowerCase().includes('timed out'))) {
+          toast.error('Send timed out, WhatsApp service may be overloaded', { id: toastId })
+        } else if (res.status === 502) {
+          toast.error("Can't reach WhatsApp service — check it's running", { id: toastId })
+        } else {
+          toast.error(data.error || 'Failed to send message', { id: toastId })
+        }
+        return
       }
 
-      toast.success('Test message sent successfully!', { id: toastId })
+      toast.success(`Test message sent successfully! Chat ID: ${data.chatId || ''}`, { id: toastId })
       setTestMessage('')
       fetchRecentSent()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to send message'
-      toast.error(message, { id: toastId })
+      if (message.toLowerCase().includes('timed out')) {
+        toast.error('Send timed out, WhatsApp service may be overloaded', { id: toastId })
+      } else {
+        toast.error(message, { id: toastId })
+      }
     } finally {
       setSendingTest(false)
     }
@@ -404,7 +418,7 @@ export default function WhatsappManagerPage() {
             Send Test Message
           </button>
           {!connected && (
-            <p className="text-xs text-red-400">⚠️ WhatsApp must be connected to send messages.</p>
+            <p className="text-xs text-red-400">Connect WhatsApp above before sending</p>
           )}
         </form>
       </div>
