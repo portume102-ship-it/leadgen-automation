@@ -4,6 +4,9 @@ require('dotenv').config();
 
 const express = require('express');
 const logger = require('./worker/logger');
+const browserManager = require('./worker/browserManager');
+const workerManager = require('./worker/workerManager');
+const queueManager = require('./worker/queueManager');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,7 +19,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Mount Routes
+app.use('/api/jobs', require('./api/jobs'));
+app.use('/api/metrics', require('./api/metrics'));
+app.use('/api/providers', require('./api/providers'));
+app.use('/api/health', require('./api/health'));
+
+// Legacy direct health checks
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -25,7 +34,6 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Root stats endpoint
 app.get('/', (_req, res) => {
   res.json({
     name: 'Lead Intelligence SaaS Backend V3',
@@ -42,7 +50,21 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Graceful Shutdown
+process.on('SIGTERM', async () => {
+  logger.info('[Lifecycle] SIGTERM received. Shutting down gracefully...');
+  workerManager.shutdown();
+  await browserManager.shutdown();
+  process.exit(0);
+});
+
 app.listen(PORT, () => {
   logger.info(`🌐 V3 Backend Service running on port ${PORT}`);
-  logger.info('🚀 Base directories, configurations, loggers and repositories initialized.');
+  
+  // Initialize worker pool (4 tabs pool concurrency) pulling from queueManager
+  workerManager.initialize(async () => {
+    return await queueManager.dequeue();
+  });
+  
+  logger.info('🚀 Core engine worker loop active and running.');
 });
