@@ -145,17 +145,17 @@ app.post('/send', async (req, res) => {
   });
 
   if (apiSecret !== expectedSecret) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
   const { phone, message } = req.body || {};
 
   if (!phone || !message) {
-    return res.status(400).json({ error: 'phone and message are required' });
+    return res.status(400).json({ success: false, error: 'phone and message are required' });
   }
 
   if (!isReady) {
-    return res.status(503).json({ error: 'WhatsApp not ready. Scan QR first.' });
+    return res.status(503).json({ success: false, error: 'WhatsApp not ready. Scan QR first.' });
   }
 
   const cleanedPhone = String(phone).replace(/\D/g, '');
@@ -163,12 +163,20 @@ app.post('/send', async (req, res) => {
 
   console.log(`📤 Sending message to ${chatId}...`);
   try {
-    await client.sendMessage(chatId, message);
+    const sendPromise = client.sendMessage(chatId, message);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Send timed out after 20s')), 20000)
+    );
+
+    await Promise.race([sendPromise, timeoutPromise]);
     console.log(`✅ Message sent to ${chatId}`);
     return res.status(200).json({ success: true, chatId });
   } catch (error) {
     console.error('❌ Send failed:', error.message);
-    return res.status(500).json({ error: error.message });
+    if (error.message === 'Send timed out after 20s') {
+      return res.status(504).json({ success: false, error: error.message });
+    }
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
