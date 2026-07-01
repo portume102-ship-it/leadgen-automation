@@ -134,6 +134,24 @@ app.post('/reconnect', (req, res) => {
   }
 });
 
+app.post('/disconnect', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    await client.logout();
+    isReady = false;
+    if (fs.existsSync(QR_FILE)) fs.unlinkSync(QR_FILE);
+    addLog('warn', 'Manual disconnect — logged out, no auto-reconnect');
+    sessionAuthenticatedAt = null;
+    res.json({ success: true, message: 'Disconnected. Scan a new QR to reconnect.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/send', async (req, res) => {
   const apiSecret = (req.headers['x-api-secret'] || '').trim();
   const expectedSecret = (process.env.API_SECRET || '').trim();
