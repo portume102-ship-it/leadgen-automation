@@ -15,6 +15,8 @@ async function loadBaileys() {
 }
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
+const jobManager = require('./scraper/jobManager');
+const dbWriter = require('./scraper/dbWriter');
 
 const QR_FILE = path.join(__dirname, 'qr.txt');
 
@@ -520,6 +522,181 @@ app.post('/send', async (req, res) => {
   }
 });
 
+// ============================================================
+// SCRAPER CONTROL ENDPOINTS
+// ============================================================
+
+app.post('/scraper/start', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { keyword, city, maxLeads, workerCount, provider } = req.body || {};
+
+  if (!keyword || !city) {
+    return res.status(400).json({ success: false, error: 'keyword and city are required' });
+  }
+
+  try {
+    const newJob = {
+      keyword: keyword.trim(),
+      city: city.trim(),
+      max_leads: parseInt(maxLeads, 10) || 50,
+      worker_count: parseInt(workerCount, 10) || 1,
+      current_provider: provider || 'google_maps',
+      status: 'queued',
+      logs: [`[${new Date().toISOString()}] Job created via API.`]
+    };
+
+    const created = await dbWriter.writeRecord('scrape_jobs', newJob);
+    jobManager.processQueue().catch(() => {});
+
+    res.json({ success: true, jobId: created?.id || null, message: 'Scrape job successfully queued.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/scraper/pause', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { jobId } = req.body || {};
+  if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
+
+  try {
+    const success = await jobManager.pauseJob(jobId);
+    if (success) {
+      res.json({ success: true, message: 'Job paused successfully.' });
+    } else {
+      res.status(400).json({ success: false, error: 'Job is not actively running or cannot be paused.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/scraper/resume', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { jobId } = req.body || {};
+  if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
+
+  try {
+    const success = await jobManager.resumeJob(jobId);
+    if (success) {
+      res.json({ success: true, message: 'Job resumed successfully.' });
+    } else {
+      res.status(400).json({ success: false, error: 'Job is not paused or cannot be resumed.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/scraper/stop', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { jobId } = req.body || {};
+  if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
+
+  try {
+    const success = await jobManager.stopJob(jobId);
+    if (success) {
+      res.json({ success: true, message: 'Job stopped successfully.' });
+    } else {
+      res.status(400).json({ success: false, error: 'Job is not active.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/scraper/retry', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { jobId } = req.body || {};
+  if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
+
+  try {
+    const oldJobs = await dbWriter.fetchRecords('scrape_jobs', { id: `eq.${jobId}` });
+    if (oldJobs.length === 0) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
+    const oldJob = oldJobs[0];
+
+    const newJob = {
+      keyword: oldJob.keyword,
+      city: oldJob.city,
+      max_leads: oldJob.max_leads,
+      worker_count: oldJob.worker_count,
+      current_provider: oldJob.current_provider,
+      status: 'queued',
+      logs: [`[${new Date().toISOString()}] Job retried/cloned from Job ${jobId}.`]
+    };
+
+    const created = await dbWriter.writeRecord('scrape_jobs', newJob);
+    jobManager.processQueue().catch(() => {});
+
+    res.json({ success: true, jobId: created?.id || null, message: 'Retried job successfully queued.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/scraper/status', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const runningJobs = await dbWriter.fetchRecords('scrape_jobs', { status: 'eq.running' });
+    if (runningJobs.length > 0) {
+      res.json({ status: 'running', job: runningJobs[0] });
+    } else {
+      res.json({ status: 'idle' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/scraper/jobs', async (req, res) => {
+  const apiSecret = (req.headers['x-api-secret'] || '').trim();
+  const expectedSecret = (process.env.API_SECRET || '').trim();
+  if (apiSecret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const list = await dbWriter.fetchRecords('scrape_jobs', {
+      order: 'created_at.desc'
+    });
+    res.json({ jobs: list });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/qr', (_req, res) => {
   if (!fs.existsSync(QR_FILE)) {
     return res.status(404).json({
@@ -580,4 +757,7 @@ app.get('/qr-scan', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`🌐 WhatsApp service running on port ${PORT}`);
   console.log('🚀 Service is in IDLE state. Call POST /connect or POST /reconnect to initialize.');
+  jobManager.recoverJobs().catch(err => {
+    console.error('⚠️ [Boot Recovery] Failed to recover scrape jobs:', err.message);
+  });
 });
