@@ -36,10 +36,87 @@ function addLog(level, message) {
 }
 
 let sock = null;
+let reconnectTimeout = null;
+
+function resetConnectionState() {
+  addLog('info', 'Resetting connection state...');
+  isReady = false;
+  isStable = false;
+  isInitializing = false;
+  sessionAuthenticatedAt = null;
+  lastDisconnectReason = null;
+  qrGeneratedAt = null;
+  if (fs.existsSync(QR_FILE)) {
+    try {
+      fs.unlinkSync(QR_FILE);
+      addLog('info', 'Deleted stale qr.txt file');
+    } catch (e) {
+      // ignore
+    }
+  }
+}
+
+async function destroySocket() {
+  if (!sock) {
+    addLog('info', 'No socket active to destroy.');
+    return;
+  }
+  addLog('info', 'Destroying previous socket...');
+  
+  // Clear any pending reconnect timers
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+    addLog('info', 'Cleared pending reconnect timer.');
+  }
+
+  // Remove old listeners
+  try {
+    addLog('info', 'Removing old listeners...');
+    sock.ev.removeAllListeners('connection.update');
+    sock.ev.removeAllListeners('creds.update');
+  } catch (e) {
+    addLog('warn', `Failed to remove listeners: ${e.message}`);
+  }
+
+  // Close socket
+  try {
+    addLog('info', 'Closing old socket connection...');
+    sock.end();
+    if (sock.ws) {
+      sock.ws.close();
+    }
+    addLog('info', 'Old socket closed.');
+  } catch (e) {
+    addLog('warn', `Failed to close socket: ${e.message}`);
+  }
+
+  sock = null;
+  addLog('info', 'Socket destroyed.');
+}
+
+function scheduleReconnect() {
+  if (reconnectTimeout) {
+    addLog('info', 'Reconnect already scheduled. Skipping.');
+    return;
+  }
+  addLog('info', 'Scheduling reconnect in 2000ms...');
+  reconnectTimeout = setTimeout(async () => {
+    reconnectTimeout = null;
+    addLog('info', 'Executing scheduled reconnect...');
+    await destroySocket();
+    resetConnectionState();
+    await startWhatsApp();
+  }, 2000);
+}
 
 async function startWhatsApp() {
-  if (isInitializing) return;
+  if (isInitializing) {
+    addLog('info', 'startWhatsApp called but initialization is already in progress. Skipping.');
+    return;
+  }
   isInitializing = true;
+
   if (!makeWASocket) {
     try {
       await loadBaileys();
@@ -50,7 +127,14 @@ async function startWhatsApp() {
       return;
     }
   }
-  addLog('info', 'Starting WhatsApp connection using Baileys...');
+
+  // PART 3: Prevent duplicate sockets - if one exists, destroy it first
+  if (sock) {
+    addLog('info', 'startWhatsApp detected duplicate socket. Running cleanup first.');
+    await destroySocket();
+  }
+
+  addLog('info', 'Creating new Baileys socket...');
   try {
     const { state, saveCreds } = await useMultiFileAuthState('/app/.wwebjs_auth');
     const { version } = await fetchLatestBaileysVersion();
@@ -62,15 +146,26 @@ async function startWhatsApp() {
       printQRInTerminal: false,
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+      saveCreds();
+      addLog('info', 'Credentials updated.');
+    });
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
+        addLog('info', 'Waiting for QR...');
+        // Delete previous QR file if it exists first (PART 7)
+        if (fs.existsSync(QR_FILE)) {
+          try {
+            fs.unlinkSync(QR_FILE);
+          } catch (e) {}
+        }
         qrGeneratedAt = new Date().toISOString();
-        addLog('info', 'QR code generated, saved to qr.txt');
+        addLog('info', 'QR generated.');
         fs.writeFileSync(QR_FILE, qr, 'utf8');
+        addLog('info', 'QR written to qr.txt.');
         qrcode.generate(qr, { small: true });
         console.log('📱 QR code saved to qr.txt — scan with WhatsApp');
       }
@@ -80,9 +175,13 @@ async function startWhatsApp() {
         isStable = false;
         isInitializing = false;
         sessionAuthenticatedAt = new Date().toISOString();
-        addLog('success', 'WhatsApp client ready');
+        addLog('success', 'Connected.');
         console.log('✅ WhatsApp client ready');
-        if (fs.existsSync(QR_FILE)) fs.unlinkSync(QR_FILE);
+        if (fs.existsSync(QR_FILE)) {
+          try {
+            fs.unlinkSync(QR_FILE);
+          } catch (e) {}
+        }
         setTimeout(() => {
           isStable = true;
           addLog('info', 'Client stabilized, ready for sends');
@@ -93,6 +192,7 @@ async function startWhatsApp() {
         isReady = false;
         isStable = false;
         isInitializing = false;
+
         const statusCode = lastDisconnect?.error instanceof Boom 
           ? lastDisconnect.error.output.statusCode 
           : null;
@@ -101,12 +201,14 @@ async function startWhatsApp() {
         addLog('warn', `Disconnected: ${reason}`);
         console.log(`⚠️ WhatsApp disconnected: ${reason}`);
 
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        if (shouldReconnect) {
-          addLog('info', 'Reconnecting...');
-          setTimeout(() => startWhatsApp(), 2000);
+        // PART 5: Handle each disconnect reason separately
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        if (isLoggedOut) {
+          addLog('warn', 'Logged out — will not auto-reconnect. Scan new QR via Connect WhatsApp after login restart.');
         } else {
-          addLog('warn', 'Logged out — will not auto-reconnect. Scan new QR via /qr-image after restart.');
+          // Automatic reconnect on connection loss / network drop / restart
+          addLog('info', `Connection closed (status: ${statusCode}). Attempting auto-reconnect.`);
+          scheduleReconnect();
         }
       }
     });
@@ -167,20 +269,27 @@ app.post('/reconnect', async (req, res) => {
   if (apiSecret !== expectedSecret) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
-  if (isInitializing) {
-    return res.status(429).json({ success: false, error: 'Initialization is already in progress' });
-  }
+  
   addLog('warn', 'Manual reconnect triggered from dashboard');
   try {
+    // Attempt graceful logout if socket exists (ignore failures)
     if (sock) {
+      addLog('info', 'Attempting graceful logout for reconnect...');
       await sock.logout().catch((err) => {
         addLog('info', `Logout skipped (likely already disconnected): ${err.message}`);
       });
     }
-    isReady = false;
-    isStable = false;
-    sessionAuthenticatedAt = null;
-    setTimeout(() => startWhatsApp(), 1000);
+
+    // Close socket, remove listeners, sock = null
+    await destroySocket();
+
+    // Reset connection state
+    resetConnectionState();
+
+    // Immediately start WhatsApp
+    startWhatsApp();
+
+    addLog('info', 'Reconnect complete.');
     res.json({ success: true, message: 'Reconnect initiated' });
   } catch (err) {
     addLog('error', `Reconnect failed: ${err.message}`);
@@ -194,17 +303,24 @@ app.post('/disconnect', async (req, res) => {
   if (apiSecret !== expectedSecret) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
+  addLog('warn', 'Manual disconnect triggered from dashboard');
   try {
     if (sock) {
-      await sock.logout().catch(() => {});
+      addLog('info', 'Attempting graceful logout for disconnect...');
+      await sock.logout().catch((err) => {
+        addLog('info', `Logout skipped during disconnect: ${err.message}`);
+      });
     }
-    isReady = false;
-    isStable = false;
-    if (fs.existsSync(QR_FILE)) fs.unlinkSync(QR_FILE);
-    addLog('warn', 'Manual disconnect — logged out, no auto-reconnect');
-    sessionAuthenticatedAt = null;
+    
+    // Close socket, remove listeners, clear timeouts, nullify sock
+    await destroySocket();
+
+    // Reset connection state
+    resetConnectionState();
+
     res.json({ success: true, message: 'Disconnected. Scan a new QR to reconnect.' });
   } catch (err) {
+    addLog('error', `Disconnect failed: ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
   }
 });
