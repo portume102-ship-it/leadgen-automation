@@ -1,80 +1,142 @@
 // backend/services/emailScraper.js
+//
+// Priority pipeline:
+//  1. mailto: anchor links (most reliable)
+//  2. Visible body text regex scan
+//  3. Find a Contact/About sub-page and repeat 1-2
+//  4. Raw HTML source regex (catches JS-encoded emails)
 
-const logger = require('../worker/logger');
+const BLACKLIST_DOMAINS = [
+  'sentry.io', 'example.com', 'w3.org', 'domain.com',
+  'yourdomain', 'test.com', 'noreply', 'no-reply',
+  'wixpress', 'squarespace', 'shopify', 'wordpress',
+  'schema.org', 'googleapis', 'facebook', 'instagram',
+];
+
+const BLACKLIST_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.pdf'];
+
+const CONTACT_KEYWORDS = ['contact', 'about', 'reach', 'support', 'help', 'connect', 'touch'];
 
 class EmailScraper {
   /**
-   * Scrapes a business website for email addresses.
-   * @param {import('playwright').Page} page - Playwright page instance to reuse.
-   * @param {string} url - Website URL.
+   * @param {import('playwright').Page} page - A Playwright page (stealth-configured browser context expected)
+   * @param {string} url - Business website URL
+   * @returns {Promise<string|null>}
    */
   async scrapeEmail(page, url) {
     if (!url || !url.startsWith('http')) return null;
 
-    logger.info(`[Email Scraper] Checking website for email: ${url}`);
-    
     try {
-      // Navigate to the home page with a short timeout to save time
-      await page.goto(url, { timeout: 8000, waitUntil: 'domcontentloaded' }).catch(() => {});
+      // Set realistic user-agent to reduce bot detection
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      });
 
-      // 1. Extract email from home page text
-      let email = await this.extractFromPage(page);
-      if (email) {
-        logger.info(`[Email Scraper] Found email on homepage: ${email}`);
-        return email;
+      await page.goto(url, {
+        timeout: 12000,
+        waitUntil: 'domcontentloaded',
+      }).catch(() => {});
+
+      // Wait a bit for JS to settle
+      await page.waitForTimeout(800).catch(() => {});
+
+      // Step 1: mailto links
+      const mailtoEmail = await this._extractMailto(page);
+      if (mailtoEmail) return mailtoEmail;
+
+      // Step 2: visible text
+      const textEmail = await this._extractFromText(page);
+      if (textEmail) return textEmail;
+
+      // Step 3: find contact page
+      const contactUrl = await this._findContactLink(page, url);
+      if (contactUrl && contactUrl !== url) {
+        await page.goto(contactUrl, { timeout: 10000, waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.waitForTimeout(600).catch(() => {});
+
+        const m = await this._extractMailto(page);
+        if (m) return m;
+
+        const t = await this._extractFromText(page);
+        if (t) return t;
       }
 
-      // 2. If not found, look for Contact or About links on the homepage
-      const contactLink = await page.evaluate(() => {
-        const anchors = Array.from(document.querySelectorAll('a[href]'));
-        const target = anchors.find(a => {
-          const text = (a.innerText || '').toLowerCase();
-          const href = (a.getAttribute('href') || '').toLowerCase();
-          return text.includes('contact') || text.includes('about') || href.includes('contact') || href.includes('about');
-        });
-        return target ? target.href : null;
-      }).catch(() => null);
+      // Step 4: raw HTML
+      const htmlEmail = await this._extractFromHTML(page);
+      if (htmlEmail) return htmlEmail;
 
-      if (contactLink && contactLink.startsWith('http') && contactLink !== url) {
-        logger.info(`[Email Scraper] Navigating to contact page: ${contactLink}`);
-        await page.goto(contactLink, { timeout: 6000, waitUntil: 'domcontentloaded' }).catch(() => {});
-        email = await this.extractFromPage(page);
-        if (email) {
-          logger.info(`[Email Scraper] Found email on contact page: ${email}`);
-          return email;
-        }
-      }
-    } catch (err) {
-      logger.warn(`[Email Scraper] Failed to scrape ${url}: ${err.message}`);
+    } catch (_) {
+      // email is a bonus — never throw
     }
 
     return null;
   }
 
-  async extractFromPage(page) {
+  async _extractMailto(page) {
     try {
-      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
-      
-      // Email matching regex
-      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-      const matches = pageText.match(emailRegex);
+      const emails = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('a[href^="mailto:"]'))
+          .map(a => a.getAttribute('href').replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase())
+          .filter(e => e.includes('@') && e.length > 5)
+      ).catch(() => []);
+      return this._pickBest(emails);
+    } catch { return null; }
+  }
 
-      if (matches && matches.length > 0) {
-        // Filter out common false positives (like images, domain extensions, template names)
-        const commonFalsePositives = ['sentry.io', 'example.com', 'w3.org', 'domain.com'];
-        const valid = matches.find(email => {
-          const lower = email.toLowerCase();
-          return !commonFalsePositives.some(domain => lower.includes(domain)) &&
-                 !lower.endsWith('.png') && 
-                 !lower.endsWith('.jpg') && 
-                 !lower.endsWith('.webp');
-        });
-        return valid ? valid.toLowerCase() : null;
-      }
-    } catch (e) {
-      logger.error(`[Email Scraper] Extraction error: ${e.message}`);
-    }
-    return null;
+  async _extractFromText(page) {
+    try {
+      const text = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+      if (text.length < 100) return null; // page didn't load properly
+      const matches = (text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || []).map(e => e.toLowerCase());
+      return this._pickBest(matches);
+    } catch { return null; }
+  }
+
+  async _extractFromHTML(page) {
+    try {
+      const html = await page.content().catch(() => '');
+      const matches = (html.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || []).map(e => e.toLowerCase());
+      return this._pickBest(matches);
+    } catch { return null; }
+  }
+
+  async _findContactLink(page, baseUrl) {
+    try {
+      const links = await page.evaluate((keywords) => {
+        return Array.from(document.querySelectorAll('a[href]'))
+          .map(a => ({ text: (a.innerText || '').toLowerCase().trim(), href: a.href || '' }))
+          .filter(({ text, href }) =>
+            keywords.some(k => text.includes(k) || href.toLowerCase().includes(k)) &&
+            href.startsWith('http') &&
+            !href.includes('#')
+          )
+          .map(({ href }) => href)
+          .slice(0, 5);
+      }, CONTACT_KEYWORDS).catch(() => []);
+
+      // Prefer same-domain links
+      const sameDomain = links.find(l => {
+        try { return new URL(l).hostname === new URL(baseUrl).hostname; } catch { return false; }
+      });
+      return sameDomain || links[0] || null;
+    } catch { return null; }
+  }
+
+  _pickBest(emails) {
+    if (!emails || emails.length === 0) return null;
+    return emails.find(email => {
+      if (!email || !email.includes('@')) return false;
+      const lower = email.toLowerCase();
+      if (BLACKLIST_DOMAINS.some(d => lower.includes(d))) return false;
+      if (BLACKLIST_EXTENSIONS.some(ext => lower.endsWith(ext))) return false;
+      const tld = lower.split('.').pop();
+      if (!tld || tld.length < 2 || tld.length > 6) return false;
+      // Must have something before @ (at least 2 chars)
+      const local = lower.split('@')[0];
+      if (!local || local.length < 2) return false;
+      return true;
+    }) || null;
   }
 }
 
