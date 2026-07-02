@@ -37,6 +37,11 @@ export default function LeadsPage() {
   // Loader state for row actions
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
+  function copyToClipboard(text: string, type: string) {
+    navigator.clipboard.writeText(text)
+    toast.success(`${type} copied to clipboard!`)
+  }
+
   // Debouncing search input
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -453,9 +458,10 @@ export default function LeadsPage() {
                     className="rounded border-gray-800 bg-gray-950 text-purple-600 focus:ring-purple-500/20 w-4 h-4 cursor-pointer"
                     aria-label="Select all leads"
                   />
-                </th>
-                <th className="px-5 py-3.5 font-bold">Name</th>
+                     <th className="px-5 py-3.5 font-bold">Name</th>
                 <th className="px-5 py-3.5 font-bold">Phone</th>
+                <th className="px-5 py-3.5 font-bold">Email</th>
+                <th className="px-5 py-3.5 font-bold">Website</th>
                 <th className="px-5 py-3.5 font-bold">City</th>
                 <th className="px-5 py-3.5 font-bold">Category</th>
                 <th className="px-5 py-3.5 font-bold">Status</th>
@@ -467,7 +473,7 @@ export default function LeadsPage() {
             <tbody className="divide-y divide-gray-800/40">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-5 py-12 text-center text-gray-500">
+                  <td colSpan={11} className="px-5 py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <span className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
                       Loading pipeline leads...
@@ -476,7 +482,7 @@ export default function LeadsPage() {
                 </tr>
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-5 py-12 text-center text-gray-500 font-medium">
+                  <td colSpan={11} className="px-5 py-12 text-center text-gray-500 font-medium">
                     No leads match the filter criteria.
                   </td>
                 </tr>
@@ -499,7 +505,49 @@ export default function LeadsPage() {
                         />
                       </td>
                       <td className="px-5 py-3 text-white font-bold max-w-[200px] truncate" title={lead.name}>{lead.name}</td>
-                      <td className="px-5 py-3 text-gray-300 font-medium">{lead.phone || '—'}</td>
+                      <td className="px-5 py-3">
+                        {lead.phone ? (
+                          <button
+                            onClick={() => copyToClipboard(lead.phone!, 'Phone number')}
+                            className="inline-flex items-center gap-1.5 text-gray-300 font-medium hover:text-purple-400 group text-left transition-colors"
+                            title="Click to copy phone number"
+                          >
+                            <span>{lead.phone}</span>
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-500">📋</span>
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {lead.email ? (
+                          <button
+                            onClick={() => copyToClipboard(lead.email!, 'Email address')}
+                            className="inline-flex items-center gap-1.5 text-gray-300 font-medium hover:text-purple-400 group text-left truncate max-w-[150px] transition-colors"
+                            title="Click to copy email address"
+                          >
+                            <span>{lead.email}</span>
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-500">📋</span>
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {lead.website ? (
+                          <a
+                            href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-[150px] inline-block transition-colors"
+                            title={lead.website}
+                          >
+                            {lead.website.replace(/^https?:\/\/(www\.)?/, '')}
+                          </a>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-gray-400">{lead.city || '—'}</td>
                       <td className="px-5 py-3 text-gray-400">{lead.category || '—'}</td>
                       <td className="px-5 py-3">
