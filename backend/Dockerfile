@@ -5,6 +5,7 @@ WORKDIR /app
 # Prevent playwright from downloading browser binaries during npm install,
 # since they are already pre-installed in the base image.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY package*.json ./
 RUN npm install
