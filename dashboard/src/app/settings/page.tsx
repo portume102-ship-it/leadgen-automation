@@ -17,6 +17,7 @@ export default function SettingsPage() {
 
   const [totalLeads, setTotalLeads] = useState<number | null>(null)
   const [clearingLeads, setClearingLeads] = useState(false)
+  const [configStatus, setConfigStatus] = useState<Record<string, boolean>>({})
 
   // 1. Fetch DB stats
   async function fetchDbStats() {
@@ -31,8 +32,22 @@ export default function SettingsPage() {
     }
   }
 
+  // Fetch true environment variable configuration status from server-side
+  async function fetchConfigStatus() {
+    try {
+      const res = await fetch('/api/health/config')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.status) setConfigStatus(data.status)
+      }
+    } catch (err) {
+      console.error('Failed to fetch config status:', err)
+    }
+  }
+
   useEffect(() => {
     fetchDbStats()
+    fetchConfigStatus()
   }, [])
 
   // 2. Connection testers
@@ -273,17 +288,26 @@ N8N_OUTREACH_TRIGGER_URL=
             { key: 'RESEND_API_KEY', desc: 'Outreach Email delivery token' },
             { key: 'N8N_AI_TRIGGER_URL', desc: 'n8n manual trigger for AI content gen' },
             { key: 'N8N_OUTREACH_TRIGGER_URL', desc: 'n8n manual trigger for bulk delivery' },
-          ].map((item) => (
-            <div key={item.key} className="py-3 flex items-center justify-between gap-4">
-              <div>
-                <span className="font-mono text-gray-300 font-bold block">{item.key}</span>
-                <span className="text-[11px] text-gray-500 mt-0.5 block">{item.desc}</span>
+          ].map((item) => {
+            const isConfigured = configStatus[item.key] === true
+            return (
+              <div key={item.key} className="py-3 flex items-center justify-between gap-4">
+                <div>
+                  <span className="font-mono text-gray-300 font-bold block">{item.key}</span>
+                  <span className="text-[11px] text-gray-500 mt-0.5 block">{item.desc}</span>
+                </div>
+                {isConfigured ? (
+                  <span className="font-semibold px-2 py-0.5 rounded text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 whitespace-nowrap">
+                    ✓ Configured
+                  </span>
+                ) : (
+                  <span className="font-semibold px-2 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 whitespace-nowrap">
+                    ✗ Missing / Blank
+                  </span>
+                )}
               </div>
-              <span className="font-semibold px-2 py-0.5 rounded text-[10px] bg-green-500/10 text-green-400 border border-green-500/20">
-                ✓ Configured
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
