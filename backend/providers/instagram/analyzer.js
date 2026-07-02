@@ -20,8 +20,21 @@ class InstagramAnalyzer {
     const crawlerUser = process.env.INSTAGRAM_ACCOUNT_USER;
 
     try {
-      // 1. Load active session cookies from database if crawler account is defined
-      if (crawlerUser) {
+      // 1. Inject INSTAGRAM_SESSION_ID cookie directly if defined in Railway variables
+      if (process.env.INSTAGRAM_SESSION_ID) {
+        logger.info(`[Instagram Analyzer] Injecting sessionid cookie from environment variables...`);
+        await page.context().addCookies([
+          {
+            name: 'sessionid',
+            value: process.env.INSTAGRAM_SESSION_ID,
+            domain: '.instagram.com',
+            path: '/',
+            secure: true,
+            httpOnly: true
+          }
+        ]);
+      } else if (crawlerUser) {
+        // Fallback to Supabase scraper_sessions table
         logger.info(`[Instagram Analyzer] Loading cookies for scraper account: ${crawlerUser}...`);
         const sessionLoaded = await sessionManager.loadSession(page.context(), 'instagram', crawlerUser);
         if (sessionLoaded) {
