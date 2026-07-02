@@ -3,21 +3,28 @@
 const logger = require('../../worker/logger');
 
 class GoogleMapsDetails {
-  async extract(page, cardIndex, version = 'v2', searchUrl = '') {
-    const cards = page.locator('div[role="feed"] a.hfpxzc');
-    const card = cards.nth(cardIndex);
+  async extract(page, cardIndex, version = 'v2', searchUrl = '', href = null) {
+    let card;
+    if (href) {
+      // Find card by exact unique href to prevent index shifts
+      card = page.locator(`div[role="feed"] a.hfpxzc[href="${href}"]`).first();
+    } else {
+      // Fallback to index if href is missing
+      const cards = page.locator('div[role="feed"] a.hfpxzc');
+      card = cards.nth(cardIndex);
+    }
 
     if (version === 'v1') {
       logger.info(`[Google Maps Details] [Legacy V1] Extracting via full page navigation on index ${cardIndex}...`);
-      const href = await card.getAttribute('href').catch(() => null);
-      if (!href) {
+      const targetHref = href || await card.getAttribute('href').catch(() => null);
+      if (!targetHref) {
         logger.warn(`[Google Maps Details] [Legacy V1] Could not retrieve href on index ${cardIndex}.`);
         return null;
       }
 
-      await page.goto(href, { timeout: 15000, waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.goto(targetHref, { timeout: 15000, waitUntil: 'domcontentloaded' }).catch(() => {});
     } else {
-      logger.info(`[Google Maps Details] [Playwright V2] Extracting via sidebar click on index ${cardIndex}...`);
+      logger.info(`[Google Maps Details] [Playwright V2] Extracting via sidebar click on card (index ${cardIndex})...`);
       await card.scrollIntoViewIfNeeded().catch(() => {});
       await card.click({ force: true }).catch(() => {});
     }

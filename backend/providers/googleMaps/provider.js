@@ -36,11 +36,14 @@ class GoogleMapsProvider {
   }
 
   async collect(page, maxLeads) {
-    return await collector.collect(page, maxLeads);
+    const hrefs = await collector.collect(page, maxLeads);
+    this.scrapedHrefs = hrefs || [];
+    return this.scrapedHrefs.length;
   }
 
   async extract(page, cardIndex, version = 'v2') {
-    return await details.extract(page, cardIndex, version, this.searchUrl);
+    const href = this.scrapedHrefs && this.scrapedHrefs[cardIndex];
+    return await details.extract(page, cardIndex, version, this.searchUrl, href);
   }
 
   normalize(raw, city) {

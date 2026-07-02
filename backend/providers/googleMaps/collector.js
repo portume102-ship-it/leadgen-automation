@@ -36,7 +36,19 @@ class GoogleMapsCollector {
       prevCount = newCount;
     }
 
-    return await page.locator('div[role="feed"] a.hfpxzc').count();
+    // Scroll back to the top of the feed to ensure first elements are clickable
+    await feed.evaluate(el => el.scrollTop = 0).catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Extract unique listing URLs (hrefs)
+    const hrefs = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll('div[role="feed"] a.hfpxzc'));
+      return anchors.map(a => a.getAttribute('href')).filter(Boolean);
+    });
+
+    const uniqueHrefs = Array.from(new Set(hrefs));
+    logger.info(`[Google Maps Collector] Finished scrolling. Collected ${uniqueHrefs.length} unique listing URLs.`);
+    return uniqueHrefs;
   }
 }
 

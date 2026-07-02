@@ -540,25 +540,33 @@ export default function ScraperPage() {
                   <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
                   Live Preview — {activeJob.scraped_leads!.length} leads extracted so far
                 </h3>
-                <span className="text-[9px] text-gray-500 uppercase tracking-wider">Not saved yet</span>
+                <span className="text-[9px] text-green-400 uppercase tracking-wider font-semibold">✓ Auto-saved to DB</span>
               </div>
-              <div className="overflow-x-auto max-h-[140px] overflow-y-auto">
-                <table className="w-full text-left text-[10px] border-collapse">
-                  <thead>
+              <div className="overflow-x-auto max-h-[160px] overflow-y-auto">
+                <table className="w-full text-left text-[10px] border-collapse min-w-[600px]">
+                  <thead className="sticky top-0 bg-gray-950">
                     <tr className="border-b border-purple-900/30 text-gray-500 font-semibold uppercase tracking-wider text-[9px]">
-                      <th className="pb-2 pr-2">Name</th>
-                      <th className="pb-2 pr-2">Phone</th>
-                      <th className="pb-2 pr-2">Category</th>
-                      <th className="pb-2">Rating</th>
+                      <th className="pb-2 pr-3">Name</th>
+                      <th className="pb-2 pr-3">Phone</th>
+                      <th className="pb-2 pr-3">Address</th>
+                      <th className="pb-2 pr-3">Category</th>
+                      <th className="pb-2 pr-3">Rating</th>
+                      <th className="pb-2">Website</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-purple-900/20 text-gray-300">
                     {activeJob.scraped_leads!.slice(-10).map((lead, i) => (
                       <tr key={i} className="hover:bg-purple-950/20">
-                        <td className="py-1.5 pr-2 font-medium text-white max-w-[130px] truncate">{lead.name}</td>
-                        <td className="py-1.5 pr-2 font-mono text-gray-400 text-[9px]">{lead.phone || '—'}</td>
-                        <td className="py-1.5 pr-2 text-gray-400 max-w-[90px] truncate">{lead.category || '—'}</td>
-                        <td className="py-1.5 text-yellow-400">{lead.rating ? `⭐ ${lead.rating}` : '—'}</td>
+                        <td className="py-1.5 pr-3 font-medium text-white max-w-[130px] truncate">{lead.name}</td>
+                        <td className="py-1.5 pr-3 font-mono text-gray-400 text-[9px] whitespace-nowrap">{lead.phone || '—'}</td>
+                        <td className="py-1.5 pr-3 text-gray-400 max-w-[140px] truncate" title={lead.address || undefined}>{lead.address || '—'}</td>
+                        <td className="py-1.5 pr-3 text-gray-400 max-w-[90px] truncate">{lead.category || '—'}</td>
+                        <td className="py-1.5 pr-3 text-yellow-400 whitespace-nowrap">{lead.rating ? `⭐ ${lead.rating}` : '—'}</td>
+                        <td className="py-1.5 text-blue-400 max-w-[120px] truncate">
+                          {lead.website
+                            ? <a href={lead.website} target="_blank" rel="noreferrer" className="underline hover:text-blue-300">{lead.website.replace(/^https?:\/\//, '')}</a>
+                            : '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
