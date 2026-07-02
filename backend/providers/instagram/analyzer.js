@@ -59,13 +59,15 @@ class InstagramAnalyzer {
         display_name: profile.display_name,
         bio: profile.bio,
         website: profile.website,
+        bio_links: profile.bio_links || [],
         followers: profile.followers,
         following: profile.following,
         posts_count: profile.posts_count,
         verified: profile.verified,
         health_score: scores.health_score,
         consistency_score: scores.consistency_score,
-        engagement_rate: er
+        engagement_rate: er,
+        posts: posts || []
       };
 
     } catch (err) {
@@ -81,13 +83,38 @@ class InstagramAnalyzer {
       display_name: username.replace(/_/g, ' '),
       bio: 'Business profile details page.',
       website: null,
+      bio_links: [],
       followers: 1250,
       following: 340,
       posts_count: 58,
       verified: false,
       health_score: 75.0,
       consistency_score: 80.0,
-      engagement_rate: 4.2
+      engagement_rate: 4.2,
+      posts: [
+        {
+          shortcode: 'mock1',
+          url: '#',
+          thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150',
+          caption: 'Building the next generation of automation tools! #startup #tech #coding',
+          hashtags: ['#startup', '#tech', '#coding'],
+          type: 'post',
+          likes_count: 120,
+          comments_count: 15,
+          date: new Date().toISOString()
+        },
+        {
+          shortcode: 'mock2',
+          url: '#',
+          thumbnail: 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=150',
+          caption: 'Consistency is the key to organic social media growth. #marketing #tips',
+          hashtags: ['#marketing', '#tips'],
+          type: 'post',
+          likes_count: 85,
+          comments_count: 8,
+          date: new Date(Date.now() - 86400000).toISOString()
+        }
+      ]
     };
   }
 }

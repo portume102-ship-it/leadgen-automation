@@ -15,40 +15,79 @@ class InstagramProfileFetcher {
         return parseInt(s, 10) || 0;
       };
 
-      // 1. Primary Pipeline: SEO Meta Description Parsing (Highly robust & DOM-layout independent)
+      // 1. Extract from DOM anchors first (yields 100% exact stats: e.g. "138,278" instead of rounded "138K")
+      let domFollowers = null;
+      let domFollowing = null;
+      let domPosts = null;
+
+      const anchors = Array.from(document.querySelectorAll('a'));
+      anchors.forEach(a => {
+        const text = a.innerText || '';
+        const lowerText = text.toLowerCase();
+        
+        if (lowerText.includes('follower')) {
+          const match = text.match(/([\d,.\sMK]+)/i);
+          if (match) domFollowers = cleanNum(match[1]);
+        } else if (lowerText.includes('following')) {
+          const match = text.match(/([\d,.\sMK]+)/i);
+          if (match) domFollowing = cleanNum(match[1]);
+        } else if (lowerText.includes('post')) {
+          const match = text.match(/([\d,.\sMK]+)/i);
+          if (match) domPosts = cleanNum(match[1]);
+        }
+      });
+
+      // Extract all external bio links from the header container
+      const bioLinks = [];
+      const headerSection = document.querySelector('main header section');
+      if (headerSection) {
+        const extAnchors = Array.from(headerSection.querySelectorAll('a[href]'));
+        extAnchors.forEach(a => {
+          const href = a.getAttribute('href') || '';
+          const text = a.innerText.trim();
+          
+          if (href && !href.startsWith('/') && !href.includes('instagram.com') && href !== '#') {
+            bioLinks.push({
+              text: text || href,
+              href: href
+            });
+          }
+        });
+      }
+
+      // Check verified status
+      const isVerified = !!document.querySelector('svg[aria-label="Verified"]');
+
+      // 2. Primary Pipeline: SEO Meta Description Parsing (Highly robust & DOM-layout independent)
       if (desc) {
         const regex = /([\d,.\sMK]+)\s*Followers,\s*([\d,.\sMK]+)\s*Following,\s*([\d,.\sMK]+)\s*Posts\s*-\s*([^(@]+)\s*\((@?\w+)\)\s*on Instagram(?::\s*"?(.*?)"?)?$/is;
         const matches = desc.match(regex);
         if (matches) {
-          // Attempt to extract website link from DOM
-          const websiteEl = document.querySelector('main header section a[href]');
-          const website = websiteEl ? websiteEl.getAttribute('href') : null;
-
-          // Check verified status
-          const isVerified = !!document.querySelector('svg[aria-label="Verified"]');
-
           return {
             display_name: matches[4].trim(),
             bio: matches[6] ? matches[6].trim() : 'Business profile details page.',
-            website: website,
-            followers: cleanNum(matches[1]),
-            following: cleanNum(matches[2]),
-            posts_count: cleanNum(matches[3]),
+            website: bioLinks[0] ? bioLinks[0].href : null,
+            bio_links: bioLinks,
+            followers: domFollowers !== null ? domFollowers : cleanNum(matches[1]),
+            following: domFollowing !== null ? domFollowing : cleanNum(matches[2]),
+            posts_count: domPosts !== null ? domPosts : cleanNum(matches[3]),
             verified: isVerified
           };
         }
       }
 
-      // 2. Secondary Fallback: DOM Selectors (Legacy layout compatibility)
-      let followers = 0;
-      let following = 0;
-      let posts = 0;
+      // 3. Secondary Fallback: DOM Selectors (Legacy layout compatibility)
+      let followers = domFollowers || 0;
+      let following = domFollowing || 0;
+      let posts = domPosts || 0;
 
-      const matchesFallback = desc.match(/([\d,.\sMK]+)\s*Followers,\s*([\d,.\sMK]+)\s*Following,\s*([\d,.\sMK]+)\s*Posts/i);
-      if (matchesFallback) {
-        followers = cleanNum(matchesFallback[1]);
-        following = cleanNum(matchesFallback[2]);
-        posts = cleanNum(matchesFallback[3]);
+      if (followers === 0 || posts === 0) {
+        const matchesFallback = desc.match(/([\d,.\sMK]+)\s*Followers,\s*([\d,.\sMK]+)\s*Following,\s*([\d,.\sMK]+)\s*Posts/i);
+        if (matchesFallback) {
+          if (followers === 0) followers = cleanNum(matchesFallback[1]);
+          if (following === 0) following = cleanNum(matchesFallback[2]);
+          if (posts === 0) posts = cleanNum(matchesFallback[3]);
+        }
       }
 
       const headerEl = document.querySelector('h2');
@@ -57,17 +96,13 @@ class InstagramProfileFetcher {
       const bioEl = document.querySelector('main header section div span');
       const bio = bioEl ? bioEl.innerText.trim() : null;
 
-      const websiteEl = document.querySelector('main header section a[href]');
-      const website = websiteEl ? websiteEl.getAttribute('href') : null;
-
-      const isVerified = !!document.querySelector('svg[aria-label="Verified"]');
-
       if (!displayName) return null;
 
       return {
         display_name: displayName,
         bio: bio || 'Business profile details page.',
-        website,
+        website: bioLinks[0] ? bioLinks[0].href : null,
+        bio_links: bioLinks,
         followers,
         following,
         posts_count: posts,

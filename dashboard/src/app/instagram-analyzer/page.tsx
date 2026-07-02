@@ -3,11 +3,29 @@
 import React, { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 
+interface InstagramPost {
+  shortcode: string
+  url: string
+  thumbnail: string
+  caption: string
+  hashtags: string[]
+  type: string
+  likes_count: number
+  comments_count: number
+  date: string
+}
+
+interface BioLink {
+  text: string
+  href: string
+}
+
 interface InstagramReport {
   username: string
   display_name: string
   bio: string | null
   website: string | null
+  bio_links: BioLink[]
   followers: number
   following: number
   posts_count: number
@@ -15,6 +33,7 @@ interface InstagramReport {
   health_score: number
   consistency_score: number
   engagement_rate: number
+  posts: InstagramPost[]
 }
 
 interface LogEntry {
@@ -210,6 +229,26 @@ export default function InstagramAnalyzerPage() {
                   🔗 {report.website}
                 </a>
               )}
+
+              {report.bio_links && report.bio_links.length > 0 && (
+                <div className="space-y-2 mt-4 pt-4 border-t border-gray-800 text-left">
+                  <h4 className="font-bold text-gray-400 uppercase text-[9px] tracking-wider">Bio Links</h4>
+                  <div className="space-y-1.5">
+                    {report.bio_links.map((link, idx) => (
+                      <a
+                        key={idx}
+                        href={link.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-950 border border-gray-850 text-xs text-purple-400 hover:text-purple-300 hover:border-purple-500/30 transition-colors"
+                      >
+                        <span>🔗</span>
+                        <span className="truncate flex-1" title={link.href}>{link.text || link.href}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Score lists */}
@@ -252,19 +291,88 @@ export default function InstagramAnalyzerPage() {
               </div>
 
               {/* Insights */}
-              <div className="space-y-4 pt-2">
+              <div className="space-y-4 pt-2 border-b border-gray-850 pb-6">
                 <h4 className="font-bold text-gray-300 text-xs uppercase text-[10px]">Presence Opportunity Signals</h4>
                 <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                  <div className="rounded-lg bg-gray-950 border border-gray-850 p-3 space-y-1">
+                  <div className="rounded-lg bg-gray-950 border border-gray-855 p-3 space-y-1">
                     <span className="text-gray-500 font-semibold block">Profile Completeness</span>
-                    <span className="text-gray-200">{report.bio && report.website ? '✅ Fully Configured' : '⚠️ Missing Bio Links'}</span>
+                    <span className="text-gray-200">{report.bio && (report.website || (report.bio_links && report.bio_links.length > 0)) ? '✅ Fully Configured' : '⚠️ Missing Bio Links'}</span>
                   </div>
-                  <div className="rounded-lg bg-gray-950 border border-gray-850 p-3 space-y-1">
+                  <div className="rounded-lg bg-gray-950 border border-gray-855 p-3 space-y-1">
                     <span className="text-gray-500 font-semibold block">Consistency Index</span>
                     <span className="text-gray-200">{report.posts_count > 50 ? '✅ Active account' : '⚠️ Low active cadence'}</span>
                   </div>
                 </div>
               </div>
+
+              {/* Recent Posts & Reels Grid */}
+              {report.posts && report.posts.length > 0 && (
+                <div className="space-y-4 pt-2">
+                  <h3 className="font-bold text-gray-200 text-sm flex items-center justify-between">
+                    <span>📸 Recent Posts & Reels ({report.posts.length})</span>
+                    <span className="text-[9px] text-gray-500 font-normal">Chronological order</span>
+                  </h3>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                    {report.posts.map((post) => (
+                      <a
+                        key={post.shortcode}
+                        href={post.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group rounded-xl border border-gray-850 bg-gray-950/60 overflow-hidden flex flex-col hover:border-purple-500/30 hover:scale-[1.02] transition-all duration-300"
+                      >
+                        {/* Image Thumbnail */}
+                        <div className="relative aspect-square w-full bg-gray-900 flex items-center justify-center overflow-hidden">
+                          {post.thumbnail ? (
+                            <img
+                              src={post.thumbnail}
+                              alt={post.caption}
+                              className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <span className="text-gray-600 text-xs">No Image</span>
+                          )}
+                          {/* Hover Stats */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-4 text-white text-xs font-bold transition-opacity duration-300">
+                            <span>❤️ {post.likes_count.toLocaleString()}</span>
+                            <span>💬 {post.comments_count.toLocaleString()}</span>
+                          </div>
+                          {/* Type Badge */}
+                          <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/60 text-[9px] font-bold text-gray-300 uppercase tracking-wider">
+                            {post.type === 'reel' ? '🎥 Reel' : '🖼️ Post'}
+                          </span>
+                        </div>
+                        
+                        {/* Caption & Date */}
+                        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between">
+                          <p className="text-[10px] text-gray-300 line-clamp-2 leading-relaxed" title={post.caption}>
+                            {post.caption}
+                          </p>
+                          
+                          <div className="space-y-1.5 pt-1.5 border-t border-gray-900">
+                            {/* Hashtags */}
+                            {post.hashtags && post.hashtags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {post.hashtags.slice(0, 3).map((tag, idx) => (
+                                  <span key={idx} className="text-[9px] text-purple-400 font-mono">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="flex justify-between items-center text-[9px] text-gray-500">
+                              <span>📅 {new Date(post.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
