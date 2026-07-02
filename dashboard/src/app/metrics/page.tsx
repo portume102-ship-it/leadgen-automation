@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 interface WorkerHealth {
   workerId: number
@@ -8,6 +8,12 @@ interface WorkerHealth {
   currentJobId: string | null
   currentProvider: string | null
   elapsedSeconds: number
+}
+
+interface LogEntry {
+  timestamp: string
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
+  message: string
 }
 
 interface Metrics {
@@ -41,24 +47,31 @@ export default function MetricsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [workers, setWorkers] = useState<WorkerHealth[]>([])
   const [queue, setQueue] = useState<QueueStats | null>(null)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [logFilter, setLogFilter] = useState<'ALL' | 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'>('ALL')
   const [loading, setLoading] = useState(true)
+
+  const consoleEndRef = useRef<HTMLDivElement | null>(null)
 
   async function fetchMetricsData() {
     try {
-      const [mRes, wRes, qRes] = await Promise.all([
+      const [mRes, wRes, qRes, lRes] = await Promise.all([
         fetch('/api/backend-v3/metrics'),
         fetch('/api/backend-v3/metrics/workers'),
-        fetch('/api/backend-v3/metrics/queue')
+        fetch('/api/backend-v3/metrics/queue'),
+        fetch('/api/backend-v3/logs')
       ])
 
-      if (mRes.ok && wRes.ok && qRes.ok) {
+      if (mRes.ok && wRes.ok && qRes.ok && lRes.ok) {
         const mData = await mRes.json()
         const wData = await wRes.json()
         const qData = await qRes.json()
+        const lData = await lRes.json()
         
         setMetrics(mData.metrics)
         setWorkers(wData.workers)
         setQueue(qData.queue)
+        setLogs(lData.logs || [])
       }
     } catch (err) {
       console.error('Failed to poll V3 backend metrics:', err)
@@ -69,9 +82,16 @@ export default function MetricsPage() {
 
   useEffect(() => {
     fetchMetricsData()
-    const interval = setInterval(fetchMetricsData, 5000) // Poll every 5s
+    const interval = setInterval(fetchMetricsData, 3000) // Poll every 3s
     return () => clearInterval(interval)
   }, [])
+
+  // Auto-scroll terminal console to bottom
+  useEffect(() => {
+    if (consoleEndRef.current) {
+      consoleEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs, logFilter])
 
   function formatUptime(sec: number) {
     const hrs = Math.floor(sec / 3600)
@@ -79,6 +99,20 @@ export default function MetricsPage() {
     const secs = sec % 60
     return `${hrs}h ${mins}m ${secs}s`
   }
+
+  function getLogLevelStyle(level: string) {
+    switch (level) {
+      case 'ERROR': return 'text-red-400 font-bold'
+      case 'WARN': return 'text-yellow-400 font-bold'
+      case 'DEBUG': return 'text-blue-400'
+      default: return 'text-purple-400'
+    }
+  }
+
+  const filteredLogs = logs.filter(log => {
+    if (logFilter === 'ALL') return true
+    return log.level === logFilter
+  })
 
   return (
     <div className="space-y-8">
@@ -93,7 +127,7 @@ export default function MetricsPage() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
           </span>
-          Live Engine Feeds (5s auto-refresh)
+          Live Engine Feeds (3s auto-refresh)
         </div>
       </div>
 
@@ -133,7 +167,6 @@ export default function MetricsPage() {
                 <span className="text-xs text-gray-500">RSS {metrics.ram_rss_mb}MB</span>
               </div>
               <div className="w-full bg-gray-950 rounded-full h-2 border border-gray-850 p-0.5 mt-2">
-                {/* 250MB heap threshold visualization */}
                 <div className="bg-purple-600 h-1 rounded-full" style={{ width: `${Math.min(100, (metrics.ram_heap_used_mb / 250) * 100)}%` }} />
               </div>
             </div>
@@ -234,6 +267,56 @@ export default function MetricsPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Retro Developer Terminal Logs Section */}
+          <div className="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden flex flex-col h-[400px]">
+            {/* Terminal Header */}
+            <div className="bg-gray-900 px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                <span className="ml-2 font-mono text-xs text-gray-400 font-bold">leadgen-v3-system-console.log</span>
+              </div>
+
+              {/* Filters */}
+              <div className="flex gap-2">
+                {(['ALL', 'INFO', 'WARN', 'ERROR', 'DEBUG'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setLogFilter(f)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-colors ${
+                      logFilter === f
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Terminal Screen */}
+            <div className="flex-1 p-5 font-mono text-[11px] text-gray-300 overflow-y-auto space-y-1.5 selection:bg-purple-500/30">
+              {filteredLogs.length === 0 ? (
+                <p className="text-gray-600 italic">Console output is empty. Polling for logs...</p>
+              ) : (
+                filteredLogs.map((log, index) => (
+                  <div key={index} className="flex gap-4 items-start leading-relaxed hover:bg-gray-900/40 py-0.5 px-1 rounded">
+                    <span className="text-gray-600 select-none">
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </span>
+                    <span className={`w-14 shrink-0 uppercase ${getLogLevelStyle(log.level)}`}>
+                      [{log.level}]
+                    </span>
+                    <span className="text-gray-300 break-all">{log.message}</span>
+                  </div>
+                ))
+              )}
+              <div ref={consoleEndRef} />
             </div>
           </div>
         </div>

@@ -26,6 +26,7 @@ app.use('/api/providers', require('./api/providers'));
 app.use('/api/health', require('./api/health'));
 app.use('/api/test', require('./api/testing'));
 app.use('/api/discovery', require('./api/discovery'));
+app.use('/api/logs', require('./api/logs'));
 
 // Legacy direct health checks
 app.get('/health', (_req, res) => {

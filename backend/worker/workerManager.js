@@ -22,10 +22,13 @@ class Worker {
 
   async poll() {
     if (this.status !== 'Idle') return;
-    
-    const job = await this.onJobPull();
-    if (job) {
-      await this.execute(job);
+    try {
+      const job = await this.onJobPull();
+      if (job) {
+        await this.execute(job);
+      }
+    } catch (err) {
+      logger.error(`[Worker #${this.id}] Error polling for jobs: ${err.message}`);
     }
   }
 
