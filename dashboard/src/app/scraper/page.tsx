@@ -71,9 +71,6 @@ export default function ScraperPage() {
   const [jobs, setJobs] = useState<ScrapeJob[]>([])
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [selectedJob, setSelectedJob] = useState<ScrapeJob | null>(null)
-  // Per-job selected lead indices for checkboxes (jobId -> Set of indices)
-  const [selectedLeadIndices, setSelectedLeadIndices] = useState<Record<string, Set<number>>>({})
-  const [savingLeads, setSavingLeads] = useState<Record<string, boolean>>({})
 
   // Fetch all jobs — scraped_leads come embedded in the job record (JSONB)
   async function fetchJobs() {
@@ -92,57 +89,6 @@ export default function ScraperPage() {
       console.error('Failed to fetch jobs:', err)
     } finally {
       setLoadingJobs(false)
-    }
-  }
-
-  // Toggle a lead index selection for a job
-  function toggleLeadSelection(jobId: string, index: number) {
-    setSelectedLeadIndices(prev => {
-      const current = new Set(prev[jobId] || [])
-      if (current.has(index)) current.delete(index)
-      else current.add(index)
-      return { ...prev, [jobId]: current }
-    })
-  }
-
-  function toggleSelectAll(jobId: string, total: number) {
-    setSelectedLeadIndices(prev => {
-      const current = prev[jobId] || new Set()
-      const allSelected = current.size === total
-      return { ...prev, [jobId]: allSelected ? new Set() : new Set(Array.from({ length: total }, (_, i) => i)) }
-    })
-  }
-
-  // Save selected (or all) scraped_leads from the job record to the leads table
-  async function handleSaveLeads(jobId: string, totalLeads: number) {
-    setSavingLeads(prev => ({ ...prev, [jobId]: true }))
-    const toastId = toast.loading('Saving leads to database...')
-    try {
-      const sel = selectedLeadIndices[jobId]
-      const body = sel && sel.size > 0 && sel.size < totalLeads
-        ? { indices: Array.from(sel) }
-        : {}
-
-      const res = await fetch(`/api/scraper/${jobId}/save-leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Save failed')
-
-      toast.success(`✅ ${data.message}`, { id: toastId, duration: 5000 })
-      if (data.warnings?.length > 0) {
-        data.warnings.forEach((w: string) => toast(`⚠️ ${w}`, { duration: 4000 }))
-      }
-      // Clear selection and refresh jobs (scraped_leads will be empty now)
-      setSelectedLeadIndices(prev => ({ ...prev, [jobId]: new Set() }))
-      fetchJobs()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to save'
-      toast.error(msg, { id: toastId })
-    } finally {
-      setSavingLeads(prev => ({ ...prev, [jobId]: false }))
     }
   }
 
