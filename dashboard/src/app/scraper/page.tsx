@@ -317,7 +317,7 @@ export default function ScraperPage() {
       setLeadCity('')
       setCategory('')
       setWebsite('')
-      fetchRecentLeads() // reload list to show new manual lead
+      fetchJobs() // refresh job list after manual lead add
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to submit lead'
       toast.error(message, { id: toastId })
