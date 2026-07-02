@@ -607,7 +607,7 @@ export default function ScraperPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-purple-900/20 text-gray-300">
-                    {activeJob.scraped_leads!.slice(-8).map((lead, i) => (
+                    {activeJob.scraped_leads!.slice(-10).map((lead, i) => (
                       <tr key={i} className="hover:bg-purple-950/20">
                         <td className="py-1.5 pr-2 font-medium text-white max-w-[130px] truncate">{lead.name}</td>
                         <td className="py-1.5 pr-2 font-mono text-gray-400 text-[9px]">{lead.phone || '—'}</td>
@@ -749,56 +749,63 @@ export default function ScraperPage() {
                                         : 'No leads extracted yet.'}
                                   </p>
                                 ) : (
-                                  <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
-                                    <table className="w-full text-left text-[10px] border-collapse">
-                                      <thead className="sticky top-0 bg-gray-950">
-                                        <tr className="text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-800 text-[9px]">
-                                          <th className="pb-1.5 pr-2 w-6">
-                                            <input
-                                              type="checkbox"
-                                              checked={allSelected}
-                                              onChange={() => toggleSelectAll(job.id, leads.length)}
-                                              className="accent-purple-500"
-                                            />
-                                          </th>
-                                          <th className="pb-1.5 pr-2">Name</th>
-                                          <th className="pb-1.5 pr-2">Phone</th>
-                                          <th className="pb-1.5 pr-2">Category</th>
-                                          <th className="pb-1.5 pr-2">Rating</th>
-                                          <th className="pb-1.5">Website</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-gray-900">
-                                        {leads.map((lead, idx) => (
-                                          <tr
-                                            key={idx}
-                                            onClick={() => toggleLeadSelection(job.id, idx)}
-                                            className={`cursor-pointer hover:bg-gray-900/60 transition-colors ${
-                                              sel.has(idx) ? 'bg-purple-950/20' : ''
-                                            }`}
-                                          >
-                                            <td className="py-1.5 pr-2">
+                                  <div>
+                                    <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
+                                      <table className="w-full text-left text-[10px] border-collapse">
+                                        <thead className="sticky top-0 bg-gray-950">
+                                          <tr className="text-gray-500 font-semibold uppercase tracking-wider border-b border-gray-800 text-[9px]">
+                                            <th className="pb-1.5 pr-2 w-6">
                                               <input
                                                 type="checkbox"
-                                                checked={sel.has(idx)}
-                                                onChange={() => toggleLeadSelection(job.id, idx)}
-                                                onClick={e => e.stopPropagation()}
+                                                checked={allSelected}
+                                                onChange={() => toggleSelectAll(job.id, leads.length)}
                                                 className="accent-purple-500"
                                               />
-                                            </td>
-                                            <td className="py-1.5 pr-2 font-medium text-white max-w-[120px] truncate">{lead.name}</td>
-                                            <td className="py-1.5 pr-2 font-mono text-gray-400 text-[9px]">{lead.phone || '—'}</td>
-                                            <td className="py-1.5 pr-2 text-gray-400 max-w-[80px] truncate">{lead.category || '—'}</td>
-                                            <td className="py-1.5 pr-2 text-yellow-400">{lead.rating ? `⭐ ${lead.rating}` : '—'}</td>
-                                            <td className="py-1.5 text-blue-400 max-w-[100px] truncate">
-                                              {lead.website
-                                                ? <a href={lead.website} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="underline">{lead.website.replace(/^https?:\/\//, '')}</a>
-                                                : '—'}
-                                            </td>
+                                            </th>
+                                            <th className="pb-1.5 pr-2">Name</th>
+                                            <th className="pb-1.5 pr-2">Phone</th>
+                                            <th className="pb-1.5 pr-2">Category</th>
+                                            <th className="pb-1.5 pr-2">Rating</th>
+                                            <th className="pb-1.5">Website</th>
                                           </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-900">
+                                          {leads.slice(0, 10).map((lead, idx) => (
+                                            <tr
+                                              key={idx}
+                                              onClick={() => toggleLeadSelection(job.id, idx)}
+                                              className={`cursor-pointer hover:bg-gray-900/60 transition-colors ${
+                                                sel.has(idx) ? 'bg-purple-950/20' : ''
+                                              }`}
+                                            >
+                                              <td className="py-1.5 pr-2">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={sel.has(idx)}
+                                                  onChange={() => toggleLeadSelection(job.id, idx)}
+                                                  onClick={e => e.stopPropagation()}
+                                                  className="accent-purple-500"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 pr-2 font-medium text-white max-w-[120px] truncate">{lead.name}</td>
+                                              <td className="py-1.5 pr-2 font-mono text-gray-400 text-[9px]">{lead.phone || '—'}</td>
+                                              <td className="py-1.5 pr-2 text-gray-400 max-w-[80px] truncate">{lead.category || '—'}</td>
+                                              <td className="py-1.5 pr-2 text-yellow-400">{lead.rating ? `⭐ ${lead.rating}` : '—'}</td>
+                                              <td className="py-1.5 text-blue-400 max-w-[100px] truncate">
+                                                {lead.website
+                                                  ? <a href={lead.website} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="underline">{lead.website.replace(/^https?:\/\//, '')}</a>
+                                                  : '—'}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    {leads.length > 10 && (
+                                      <p className="text-[10px] text-gray-500 mt-2 italic text-center">
+                                        Showing first 10 of {leads.length} leads. Save to view all of them on the <a href="/leads" className="text-purple-400 hover:text-purple-300 underline font-medium">Leads page</a>.
+                                      </p>
+                                    )}
                                   </div>
                                 )}
                               </>
