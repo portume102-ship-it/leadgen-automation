@@ -38,9 +38,16 @@ class JobManager {
       const freshJob = await scrapeJobRepository.getById(job.id);
       const logs = freshJob.logs || [];
       logs.push(`[${new Date().toISOString()}] Initiating provider search query...`);
-      await scrapeJobRepository.update(job.id, { logs });
+      // Parse brackets notation to extract area if present
+      let searchKeyword = job.keyword;
+      let searchArea = null;
+      const areaMatch = job.keyword.match(/^(.*?)\s*\[Area:\s*(.*?)\]$/);
+      if (areaMatch) {
+        searchKeyword = areaMatch[1];
+        searchArea = areaMatch[2];
+      }
 
-      await provider.search(page, { keyword: job.keyword, city: job.city });
+      await provider.search(page, { keyword: searchKeyword, city: job.city, area: searchArea });
 
       // 2. Collection Scroll phase
       logs.push(`[${new Date().toISOString()}] Scrolling list for listings elements...`);

@@ -8,7 +8,10 @@ class GoogleSearchProvider {
   }
 
   async search(page, query) {
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query.keyword + ' ' + query.city)}`;
+    const term = query.area 
+      ? `${query.keyword} ${query.area} ${query.city}`
+      : `${query.keyword} ${query.city}`;
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(term)}`;
     logger.info(`[Google Search] Searching: ${searchUrl}`);
     await page.goto(searchUrl, { timeout: 15000, waitUntil: 'domcontentloaded' });
   }

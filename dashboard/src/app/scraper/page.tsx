@@ -27,10 +27,21 @@ export default function ScraperPage() {
   // Create Job States
   const [provider, setProvider] = useState('google_maps')
   const [keyword, setKeyword] = useState('dentist')
+  const [area, setArea] = useState('')
   const [city, setCity] = useState('Mumbai')
   const [maxLeads, setMaxLeads] = useState(25)
   const [workerCount, setWorkerCount] = useState(1)
   const [queuing, setQueuing] = useState(false)
+
+  // Helper to parse keyword brackets notation
+  const parseKeywordAndArea = (rawKeyword: string) => {
+    if (!rawKeyword) return { keyword: '', area: null }
+    const match = rawKeyword.match(/^(.*?)\s*\[Area:\s*(.*?)\]$/)
+    if (match) {
+      return { keyword: match[1], area: match[2] }
+    }
+    return { keyword: rawKeyword, area: null }
+  }
 
   // Manual entry states (Preserved Feature)
   const [name, setName] = useState('')
@@ -91,6 +102,7 @@ export default function ScraperPage() {
         body: JSON.stringify({
           keyword: keyword.trim(),
           city: city.trim(),
+          area: area.trim() || undefined,
           maxLeads,
           workerCount,
           provider
@@ -103,6 +115,7 @@ export default function ScraperPage() {
       }
 
       toast.success('Scrape job successfully queued!', { id: toastId })
+      setArea('') // clear area state
       fetchJobs()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error starting job'
@@ -280,6 +293,17 @@ export default function ScraperPage() {
               </div>
 
               <div>
+                <label className="block text-[10px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">Area (Optional)</label>
+                <input
+                  type="text"
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  placeholder="e.g. Andheri, Bandra, Juhu"
+                  className="w-full rounded-lg bg-gray-950 border border-gray-800 px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
                 <label className="block text-[10px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">City</label>
                 <input
                   type="text"
@@ -410,7 +434,14 @@ export default function ScraperPage() {
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div className="rounded-lg bg-gray-950/80 p-3 border border-gray-850">
                     <span className="text-gray-500 uppercase font-semibold text-[10px]">Keyword</span>
-                    <p className="font-bold text-gray-200 text-sm">{activeJob.keyword}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="font-bold text-gray-200 text-sm">{parseKeywordAndArea(activeJob.keyword).keyword}</p>
+                      {parseKeywordAndArea(activeJob.keyword).area && (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-semibold text-[9px] uppercase">
+                          📍 {parseKeywordAndArea(activeJob.keyword).area}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="rounded-lg bg-gray-950/80 p-3 border border-gray-850">
                     <span className="text-gray-500 uppercase font-semibold text-[10px]">City</span>
@@ -493,10 +524,15 @@ export default function ScraperPage() {
                   <div key={job.id} className="rounded-lg border border-gray-850 bg-gray-950/30 p-4 space-y-3">
                     <div className="flex justify-between items-start text-xs">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-gray-200">
-                            {job.keyword} in {job.city}
+                            {parseKeywordAndArea(job.keyword).keyword} in {job.city}
                           </span>
+                          {parseKeywordAndArea(job.keyword).area && (
+                            <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-semibold text-[8px] uppercase">
+                              📍 {parseKeywordAndArea(job.keyword).area}
+                            </span>
+                          )}
                           <span className="text-[10px] text-gray-500">({job.current_provider})</span>
                         </div>
                         <span className="text-[10px] text-gray-500">{new Date(job.created_at).toLocaleString()}</span>

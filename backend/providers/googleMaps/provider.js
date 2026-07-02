@@ -12,7 +12,9 @@ class GoogleMapsProvider {
   }
 
   async search(page, query) {
-    const searchTerm = `${query.keyword} in ${query.city}`;
+    const searchTerm = query.area 
+      ? `${query.keyword} in ${query.area}, ${query.city}`
+      : `${query.keyword} in ${query.city}`;
     const encoded = encodeURIComponent(searchTerm);
     const mapsUrl = `https://www.google.com/maps/search/${encoded}`;
     

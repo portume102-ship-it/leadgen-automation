@@ -37,14 +37,15 @@ router.get('/', async (req, res, next) => {
 });
 
 router.post('/start', async (req, res, next) => {
-  const { keyword, city, maxLeads, workerCount, provider } = req.body || {};
+  const { keyword, city, maxLeads, workerCount, provider, area } = req.body || {};
   if (!keyword || !city) {
     return res.status(400).json({ success: false, error: 'keyword and city are required' });
   }
 
   try {
+    const finalKeyword = area && area.trim() ? `${keyword.trim()} [Area: ${area.trim()}]` : keyword.trim();
     const job = await queueManager.enqueue({
-      keyword,
+      keyword: finalKeyword,
       city,
       max_leads: maxLeads || 25,
       worker_count: workerCount || 1,
