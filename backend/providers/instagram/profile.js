@@ -37,19 +37,35 @@ class InstagramProfileFetcher {
         }
       });
 
-      // Extract all external bio links from the header container
+      // Extract all external bio links from the header container (including l.instagram.com redirects)
       const bioLinks = [];
       const headerSection = document.querySelector('main header section');
       if (headerSection) {
         const extAnchors = Array.from(headerSection.querySelectorAll('a[href]'));
+        const cleanUrls = new Set();
+        
         extAnchors.forEach(a => {
           const href = a.getAttribute('href') || '';
           const text = a.innerText.trim();
           
-          if (href && !href.startsWith('/') && !href.includes('instagram.com') && href !== '#') {
+          let isExternal = false;
+          let targetUrl = href;
+
+          if (href.includes('l.instagram.com/?u=')) {
+            isExternal = true;
+            try {
+              const urlObj = new URL(href);
+              targetUrl = urlObj.searchParams.get('u') || href;
+            } catch (e) {}
+          } else if (href && !href.startsWith('/') && !href.includes('instagram.com') && href !== '#') {
+            isExternal = true;
+          }
+
+          if (isExternal && targetUrl && !cleanUrls.has(targetUrl)) {
+            cleanUrls.add(targetUrl);
             bioLinks.push({
-              text: text || href,
-              href: href
+              text: text || targetUrl,
+              href: targetUrl
             });
           }
         });
@@ -58,14 +74,31 @@ class InstagramProfileFetcher {
       // Check verified status
       const isVerified = !!document.querySelector('svg[aria-label="Verified"]');
 
-      // 2. Primary Pipeline: SEO Meta Description Parsing (Highly robust & DOM-layout independent)
+      // Extract complete bio text (including category label like "Media/news company")
+      const textParts = [];
+      const bioSpans = Array.from(document.querySelectorAll('main header section h1 ~ div span, main header section h2 ~ div span, main header section h1 ~ span, main header section h2 ~ span, main header section h1 ~ div div, main header section h2 ~ div div'));
+      
+      bioSpans.forEach(el => {
+        const text = el.innerText ? el.innerText.trim() : '';
+        if (text && text.length > 0 && text.length < 500) {
+          // Skip statistical elements, links or buttons
+          if (!text.includes('followers') && !text.includes('following') && !text.includes('posts') && !text.includes('Follow') && !text.includes('Message')) {
+            if (!textParts.includes(text)) {
+              textParts.push(text);
+            }
+          }
+        }
+      });
+      const combinedBio = textParts.length > 0 ? textParts.join('\n') : null;
+
+      // 2. Primary Pipeline: SEO Meta Description Parsing
       if (desc) {
         const regex = /([\d,.\sMK]+)\s*Followers,\s*([\d,.\sMK]+)\s*Following,\s*([\d,.\sMK]+)\s*Posts\s*-\s*([^(@]+)\s*\((@?\w+)\)\s*on Instagram(?::\s*"?(.*?)"?)?$/is;
         const matches = desc.match(regex);
         if (matches) {
           return {
             display_name: matches[4].trim(),
-            bio: matches[6] ? matches[6].trim() : 'Business profile details page.',
+            bio: combinedBio || matches[6]?.trim() || 'Business profile details page.',
             website: bioLinks[0] ? bioLinks[0].href : null,
             bio_links: bioLinks,
             followers: domFollowers !== null ? domFollowers : cleanNum(matches[1]),
@@ -76,7 +109,7 @@ class InstagramProfileFetcher {
         }
       }
 
-      // 3. Secondary Fallback: DOM Selectors (Legacy layout compatibility)
+      // 3. Secondary Fallback: DOM Selectors
       let followers = domFollowers || 0;
       let following = domFollowing || 0;
       let posts = domPosts || 0;
@@ -92,15 +125,12 @@ class InstagramProfileFetcher {
 
       const headerEl = document.querySelector('h2');
       const displayName = headerEl ? headerEl.innerText.trim() : null;
-      
-      const bioEl = document.querySelector('main header section div span');
-      const bio = bioEl ? bioEl.innerText.trim() : null;
 
       if (!displayName) return null;
 
       return {
         display_name: displayName,
-        bio: bio || 'Business profile details page.',
+        bio: combinedBio || 'Business profile details page.',
         website: bioLinks[0] ? bioLinks[0].href : null,
         bio_links: bioLinks,
         followers,
