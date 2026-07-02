@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
   const whatsappUrl = process.env.V3_BACKEND_URL || process.env.WHATSAPP_SERVICE_URL || 'http://localhost:3001'
   const subPath = params.path.join('/')
-  const targetUrl = `${whatsappUrl}/scraper/${subPath}`
+  
+  // Map /api/scraper/... to backend /api/jobs/...
+  const backendPath = subPath === 'jobs' ? '/api/jobs' : `/api/jobs/${subPath}`
+  const targetUrl = `${whatsappUrl.replace(/\/$/, '')}${backendPath}`
  
   try {
     const body = await req.json().catch(() => ({}))
@@ -27,7 +30,10 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
 export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
   const whatsappUrl = process.env.V3_BACKEND_URL || process.env.WHATSAPP_SERVICE_URL || 'http://localhost:3001'
   const subPath = params.path.join('/')
-  const targetUrl = `${whatsappUrl}/scraper/${subPath}`
+  
+  // Map /api/scraper/... to backend /api/jobs/...
+  const backendPath = subPath === 'jobs' ? '/api/jobs' : `/api/jobs/${subPath}`
+  const targetUrl = `${whatsappUrl.replace(/\/$/, '')}${backendPath}`
  
   try {
     const res = await fetch(targetUrl, {
