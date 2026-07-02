@@ -12,11 +12,16 @@ if (!supabaseUrl || !supabaseKey) {
   logger.error('[Database] SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables.');
 }
 
+const WebSocket = require('ws');
+
 logger.info(`[Database] Initializing Supabase client at ${supabaseUrl}...`);
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
+  },
+  realtime: {
+    WebSocket: WebSocket,
   }
 });
 
