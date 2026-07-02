@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 
 interface InstagramReport {
@@ -17,17 +17,67 @@ interface InstagramReport {
   engagement_rate: number
 }
 
+interface LogEntry {
+  timestamp: string
+  level: string
+  message: string
+}
+
 export default function InstagramAnalyzerPage() {
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<InstagramReport | null>(null)
+  const [logs, setLogs] = useState<string[]>([])
+  
+  const logEndRef = useRef<HTMLDivElement | null>(null)
+
+  // Auto-scroll logs terminal
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
 
   async function handleAudit(e: React.FormEvent) {
     e.preventDefault()
     if (!username.trim()) return
 
     setLoading(true)
+    setReport(null)
+    setLogs(['[System] Initializing Instagram profile audit connection...'])
     const toastId = toast.loading('Running Instagram profile audit...')
+
+    // Polling function for active logs
+    let pollCount = 0
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/backend-v3/logs')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.logs) {
+            const igLogs = data.logs
+              .filter((log: LogEntry) => log.message.includes('[Instagram Analyzer]'))
+              .map((log: LogEntry) => {
+                const time = new Date(log.timestamp).toLocaleTimeString()
+                return `[${time}] ${log.message.replace('[Instagram Analyzer] ', '')}`
+              })
+            
+            if (igLogs.length > 0) {
+              setLogs(igLogs)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to poll active logs:', err)
+      }
+      
+      // Safety limit: stop polling after 45 seconds if request hangs
+      pollCount++
+      if (pollCount > 45) {
+        clearInterval(pollInterval)
+      }
+    }, 1000)
+
     try {
       const res = await fetch('/api/backend-v3/test/instagram', {
         method: 'POST',
@@ -36,14 +86,32 @@ export default function InstagramAnalyzerPage() {
       })
 
       const data = await res.json()
+      clearInterval(pollInterval)
+
       if (res.ok && data.report) {
         setReport(data.report)
+        // Fetch logs one final time to capture completeness
+        const logsRes = await fetch('/api/backend-v3/logs')
+        if (logsRes.ok) {
+          const logsData = await logsRes.json()
+          if (logsData.logs) {
+            const igLogs = logsData.logs
+              .filter((log: LogEntry) => log.message.includes('[Instagram Analyzer]'))
+              .map((log: LogEntry) => {
+                const time = new Date(log.timestamp).toLocaleTimeString()
+                return `[${time}] ${log.message.replace('[Instagram Analyzer] ', '')}`
+              })
+            setLogs(igLogs)
+          }
+        }
         toast.success('Instagram audit completed!', { id: toastId })
       } else {
         throw new Error(data.error || 'Audit failed')
       }
     } catch (err: unknown) {
+      clearInterval(pollInterval)
       const msg = err instanceof Error ? err.message : 'Error auditing profile'
+      setLogs(prev => [...prev, `❌ Error: ${msg}`])
       toast.error(msg, { id: toastId })
     } finally {
       setLoading(false)
@@ -87,6 +155,29 @@ export default function InstagramAnalyzerPage() {
         </form>
       </div>
 
+      {/* Real-time Logger Console Terminal */}
+      {(loading || logs.length > 0) && (
+        <div className="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden max-w-2xl flex flex-col h-[200px]">
+          <div className="bg-gray-900/80 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
+            <span className="font-mono text-[10px] text-gray-400 font-bold uppercase tracking-wider">📡 Scraper Engine Console Logs</span>
+            {loading && (
+              <span className="text-[10px] text-purple-400 font-mono animate-pulse flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                Live streaming...
+              </span>
+            )}
+          </div>
+          <div className="flex-1 p-4 font-mono text-[10px] text-gray-300 overflow-y-auto space-y-1 select-none">
+            {logs.map((log, index) => (
+              <div key={index} className="leading-relaxed break-all">
+                <span className={log.startsWith('❌') ? 'text-red-400' : 'text-gray-400'}>{log}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      )}
+
       {/* Report results */}
       {report && (
         <div className="grid gap-6 lg:grid-cols-3">
@@ -125,11 +216,11 @@ export default function InstagramAnalyzerPage() {
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-4 text-xs">
               <h4 className="font-bold text-gray-200 uppercase text-[10px] border-b border-gray-850 pb-2">Operational Scores</h4>
               
-              <div className="flex justify-between items-center border-b border-gray-850/40 pb-2">
+              <div className="flex justify-between items-center border-b border-gray-855 pb-2">
                 <span className="text-gray-400">Health Index</span>
                 <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.health_score)}`}>{report.health_score}</span>
               </div>
-              <div className="flex justify-between items-center border-b border-gray-850/40 pb-2">
+              <div className="flex justify-between items-center border-b border-gray-855 pb-2">
                 <span className="text-gray-400">Content Consistency</span>
                 <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.consistency_score)}`}>{report.consistency_score}</span>
               </div>
@@ -143,7 +234,7 @@ export default function InstagramAnalyzerPage() {
           {/* Right panel: Statistics */}
           <div className="lg:col-span-2 space-y-6">
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6">
-              <h3 className="font-bold text-gray-200 text-sm border-b border-gray-855 pb-2">📊 Profile Audience Statistics</h3>
+              <h3 className="font-bold text-gray-200 text-sm border-b border-gray-850 pb-2">📊 Profile Audience Statistics</h3>
               
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div className="bg-gray-950/60 p-4 rounded-xl border border-gray-850">

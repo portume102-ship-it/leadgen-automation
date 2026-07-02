@@ -17,28 +17,43 @@ class InstagramAnalyzer {
     const profileUrl = `https://www.instagram.com/${username}/`;
 
     try {
+      logger.info(`[Instagram Analyzer] Navigating to Instagram profile page: ${profileUrl}`);
       await page.goto(profileUrl, { timeout: 20000, waitUntil: 'domcontentloaded' });
 
       // Check if redirected to login wall
       const currentUrl = page.url();
+      logger.info(`[Instagram Analyzer] Loaded page URL: ${currentUrl}`);
+      
       if (currentUrl.includes('accounts/login')) {
-        logger.warn(`[Instagram Analyzer] Blocked by Instagram login wall on @${username}. Falling back to metadata / mock parser.`);
+        logger.warn(`[Instagram Analyzer] Redirected to Instagram login wall on @${username}. Initiating fallback data generator...`);
         return this.getFallbackPayload(username);
       }
 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Invoke modules
+      logger.info(`[Instagram Analyzer] Fetching profile metadata (followers, following, bio)...`);
       const profile = await profileFetcher.fetch(page);
       if (!profile || !profile.display_name) {
+        logger.warn(`[Instagram Analyzer] Profile elements not found. Generating fallback data...`);
         return this.getFallbackPayload(username);
       }
+      
+      logger.info(`[Instagram Analyzer] Extracted: Name="${profile.display_name}", Followers=${profile.followers}, Following=${profile.following}`);
 
+      logger.info(`[Instagram Analyzer] Fetching public posts metrics...`);
       const posts = await postsFetcher.fetch(page);
+      
+      logger.info(`[Instagram Analyzer] Fetching public reels metrics...`);
       const reels = await reelsFetcher.fetch(page);
+      
+      logger.info(`[Instagram Analyzer] Calculating engagement rates...`);
       const er = engagementCalculator.calculate(profile, posts, reels);
+      
+      logger.info(`[Instagram Analyzer] Generating health and consistency scores...`);
       const scores = insightsGenerator.generateScores(profile);
 
+      logger.info(`[Instagram Analyzer] Completed audit successfully for @${username}`);
       return {
         username,
         display_name: profile.display_name,

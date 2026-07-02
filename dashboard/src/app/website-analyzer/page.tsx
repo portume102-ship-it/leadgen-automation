@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 
 interface AuditReport {
@@ -22,17 +22,67 @@ interface AuditReport {
   phone_numbers: string[]
 }
 
+interface LogEntry {
+  timestamp: string
+  level: string
+  message: string
+}
+
 export default function WebsiteAnalyzerPage() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<AuditReport | null>(null)
+  const [logs, setLogs] = useState<string[]>([])
+  
+  const logEndRef = useRef<HTMLDivElement | null>(null)
+
+  // Auto-scroll logs terminal
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
 
   async function handleAudit(e: React.FormEvent) {
     e.preventDefault()
     if (!url.trim()) return
 
     setLoading(true)
+    setReport(null)
+    setLogs(['[System] Initializing website audit connection...'])
     const toastId = toast.loading('Running full website audit...')
+
+    // Polling function for active logs
+    let pollCount = 0
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/backend-v3/logs')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.logs) {
+            const webLogs = data.logs
+              .filter((log: LogEntry) => log.message.includes('[Website Analyzer]'))
+              .map((log: LogEntry) => {
+                const time = new Date(log.timestamp).toLocaleTimeString()
+                return `[${time}] ${log.message.replace('[Website Analyzer] ', '')}`
+              })
+            
+            if (webLogs.length > 0) {
+              setLogs(webLogs)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to poll active logs:', err)
+      }
+      
+      // Safety limit: stop polling after 45 seconds if request hangs
+      pollCount++
+      if (pollCount > 45) {
+        clearInterval(pollInterval)
+      }
+    }, 1000)
+
     try {
       const res = await fetch('/api/backend-v3/test/website', {
         method: 'POST',
@@ -41,14 +91,32 @@ export default function WebsiteAnalyzerPage() {
       })
 
       const data = await res.json()
+      clearInterval(pollInterval)
+
       if (res.ok && data.report) {
         setReport(data.report)
+        // Fetch logs one final time to capture completeness
+        const logsRes = await fetch('/api/backend-v3/logs')
+        if (logsRes.ok) {
+          const logsData = await logsRes.json()
+          if (logsData.logs) {
+            const webLogs = logsData.logs
+              .filter((log: LogEntry) => log.message.includes('[Website Analyzer]'))
+              .map((log: LogEntry) => {
+                const time = new Date(log.timestamp).toLocaleTimeString()
+                return `[${time}] ${log.message.replace('[Website Analyzer] ', '')}`
+              })
+            setLogs(webLogs)
+          }
+        }
         toast.success('Website audit completed!', { id: toastId })
       } else {
         throw new Error(data.error || 'Audit failed')
       }
     } catch (err: unknown) {
+      clearInterval(pollInterval)
       const msg = err instanceof Error ? err.message : 'Error auditing website'
+      setLogs(prev => [...prev, `❌ Error: ${msg}`])
       toast.error(msg, { id: toastId })
     } finally {
       setLoading(false)
@@ -91,6 +159,29 @@ export default function WebsiteAnalyzerPage() {
         </form>
       </div>
 
+      {/* Real-time Logger Console Terminal */}
+      {(loading || logs.length > 0) && (
+        <div className="rounded-xl border border-gray-800 bg-gray-950 overflow-hidden max-w-2xl flex flex-col h-[200px]">
+          <div className="bg-gray-900/80 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
+            <span className="font-mono text-[10px] text-gray-400 font-bold uppercase tracking-wider">📡 Audit Engine Console Logs</span>
+            {loading && (
+              <span className="text-[10px] text-purple-400 font-mono animate-pulse flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                Live streaming...
+              </span>
+            )}
+          </div>
+          <div className="flex-1 p-4 font-mono text-[10px] text-gray-300 overflow-y-auto space-y-1 select-none">
+            {logs.map((log, index) => (
+              <div key={index} className="leading-relaxed break-all">
+                <span className={log.startsWith('❌') ? 'text-red-400' : 'text-gray-400'}>{log}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      )}
+
       {/* Results Report Display */}
       {report && (
         <div className="grid gap-6 lg:grid-cols-3">
@@ -98,122 +189,100 @@ export default function WebsiteAnalyzerPage() {
           <div className="lg:col-span-1 space-y-4">
             <div className={`rounded-xl border p-6 text-center space-y-2 ${getScoreColor(report.overall_score)}`}>
               <span className="text-[10px] font-bold uppercase tracking-widest block text-gray-400">Overall Score</span>
-              <p className="text-5xl font-black">{Math.round(report.overall_score)}</p>
+              <span className="text-5xl font-black">{report.overall_score}</span>
             </div>
 
-            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-4 text-xs">
-              <h4 className="font-bold text-gray-200 uppercase text-[10px] border-b border-gray-850 pb-2">Subscores</h4>
-              
-              <div className="flex justify-between items-center border-b border-gray-850/40 pb-2">
-                <span className="text-gray-400">SEO Score</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.seo_score)}`}>{report.seo_score}</span>
-              </div>
-              <div className="flex justify-between items-center border-b border-gray-850/40 pb-2">
-                <span className="text-gray-400">UX / UI Score</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.ux_score)}`}>{report.ux_score}</span>
-              </div>
-              <div className="flex justify-between items-center border-b border-gray-850/40 pb-2">
-                <span className="text-gray-400">Performance Score</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.performance_score)}`}>{report.performance_score}</span>
-              </div>
-              <div className="flex justify-between items-center pb-1">
-                <span className="text-gray-400">Accessibility Score</span>
-                <span className={`px-2 py-0.5 rounded font-bold ${getScoreColor(report.accessibility_score)}`}>{report.accessibility_score}</span>
-              </div>
-            </div>
-
-            {/* Tech details */}
-            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-4 text-xs">
-              <h4 className="font-bold text-gray-200 uppercase text-[10px] border-b border-gray-850 pb-2">Diagnostics</h4>
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-3 text-xs">
+              <h4 className="font-bold text-gray-200 uppercase text-[10px] border-b border-gray-850 pb-2">Individual Pillars</h4>
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">Load Time</span>
-                <span className="text-gray-200 font-semibold">{report.tech_stack.load_time_ms} ms</span>
+                <span className="text-gray-400">SEO Structure</span>
+                <span className="font-bold">{report.seo_score}/100</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">SSL status</span>
-                <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${report.tech_stack.ssl_enabled ? 'bg-green-950 text-green-400' : 'bg-red-950 text-red-400'}`}>
-                  {report.tech_stack.ssl_enabled ? 'SECURE' : 'UNSECURE'}
-                </span>
+                <span className="text-gray-400">User Experience</span>
+                <span className="font-bold">{report.ux_score}/100</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">Total Images</span>
-                <span className="text-gray-200 font-semibold">{report.tech_stack.images_count}</span>
+                <span className="text-gray-400">Performance Index</span>
+                <span className="font-bold">{report.performance_score}/100</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">Missing ALT attributes</span>
-                <span className="text-red-400 font-semibold">{report.tech_stack.missing_alt_count}</span>
+                <span className="text-gray-400">Accessibility Rating</span>
+                <span className="font-bold">{report.accessibility_score}/100</span>
               </div>
             </div>
           </div>
 
-          {/* Right panel: Tech stack & Contacts */}
+          {/* Right panel: Data Extraction Lists */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Tech list */}
-            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-4">
-              <h3 className="font-bold text-gray-200 text-sm">🛠️ Detected Technologies</h3>
-              {report.tech_stack.technologies.length === 0 ? (
-                <p className="text-xs text-gray-500">No popular frameworks or integrations detected.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {report.tech_stack.technologies.map(t => (
-                    <span key={t} className="px-3 py-1 bg-purple-950 text-purple-300 border border-purple-900 rounded-lg text-xs font-semibold">
-                      {t}
-                    </span>
-                  ))}
+            <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6">
+              <h3 className="font-bold text-gray-200 text-sm border-b border-gray-850 pb-2">🛠️ Technology & Security Audit</h3>
+              
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="bg-gray-950/60 p-4 rounded-xl border border-gray-850 space-y-1">
+                  <span className="text-gray-500 font-semibold block">Load Time</span>
+                  <span className="text-gray-200 font-bold">{report.tech_stack.load_time_ms} ms</span>
+                </div>
+                <div className="bg-gray-950/60 p-4 rounded-xl border border-gray-850 space-y-1">
+                  <span className="text-gray-500 font-semibold block">SSL Secure Connection</span>
+                  <span className="text-gray-200 font-bold">{report.tech_stack.ssl_enabled ? '🔒 HTTPS Secure' : '⚠️ Unencrypted HTTP'}</span>
+                </div>
+              </div>
+
+              {/* Technologies list */}
+              {report.tech_stack.technologies.length > 0 && (
+                <div className="space-y-2 text-xs">
+                  <span className="text-gray-500 font-semibold block">Detected Frameworks & Libraries</span>
+                  <div className="flex flex-wrap gap-2">
+                    {report.tech_stack.technologies.map(t => (
+                      <span key={t} className="px-2.5 py-1 bg-gray-950 border border-gray-850 text-gray-300 rounded font-mono text-[10px]">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Contacts parsed */}
+            {/* Contacts & Social links */}
             <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6">
-              <h3 className="font-bold text-gray-200 text-sm border-b border-gray-850 pb-2">📞 Extracted Contact Info</h3>
-              
-              <div className="grid gap-6 md:grid-cols-2 text-xs">
-                {/* Emails list */}
-                <div className="space-y-2">
-                  <span className="font-semibold text-gray-400 block uppercase text-[10px]">Emails ({report.emails.length})</span>
-                  {report.emails.length === 0 ? (
-                    <p className="text-gray-600 italic">No email found on page.</p>
-                  ) : (
-                    <ul className="space-y-1 text-gray-300 font-mono">
-                      {report.emails.map(e => <li key={e}>{e}</li>)}
-                    </ul>
-                  )}
+              <h3 className="font-bold text-gray-200 text-sm border-b border-gray-850 pb-2">📞 Contact details & Social Footprints</h3>
+
+              <div className="grid md:grid-cols-2 gap-6 text-xs">
+                <div className="space-y-3">
+                  <h4 className="font-bold text-gray-400 uppercase text-[9px] tracking-wider">Contact Channels</h4>
+                  <div className="space-y-1.5">
+                    {report.emails.map(e => (
+                      <div key={e} className="text-gray-200 break-all bg-gray-950/40 px-3 py-1.5 rounded border border-gray-900">✉️ {e}</div>
+                    ))}
+                    {report.phone_numbers.map(p => (
+                      <div key={p} className="text-gray-200 break-all bg-gray-950/40 px-3 py-1.5 rounded border border-gray-900">📞 {p}</div>
+                    ))}
+                    {report.emails.length === 0 && report.phone_numbers.length === 0 && (
+                      <span className="text-gray-500 italic">No emails or phone numbers found on the homepage.</span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Phone list */}
-                <div className="space-y-2">
-                  <span className="font-semibold text-gray-400 block uppercase text-[10px]">Phone numbers ({report.phone_numbers.length})</span>
-                  {report.phone_numbers.length === 0 ? (
-                    <p className="text-gray-600 italic">No phone number parsed.</p>
-                  ) : (
-                    <ul className="space-y-1 text-gray-300 font-mono">
-                      {report.phone_numbers.map(p => <li key={p}>{p}</li>)}
-                    </ul>
-                  )}
-                </div>
-              </div>
-
-              {/* Social Channels */}
-              <div className="space-y-2 border-t border-gray-850/50 pt-4">
-                <span className="font-semibold text-gray-400 block uppercase text-[10px]">Social Channels & Anchors ({report.social_links.length})</span>
-                {report.social_links.length === 0 ? (
-                  <p className="text-xs text-gray-600 italic">No social media anchors parsed from DOM links.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {report.social_links.map(l => (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-gray-400 uppercase text-[9px] tracking-wider">Social Footprints</h4>
+                  <div className="space-y-1.5">
+                    {report.social_links.map(s => (
                       <a
-                        key={l}
-                        href={l}
+                        key={s}
+                        href={s}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-2 py-1 bg-gray-950 border border-gray-800 rounded text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                        className="block text-purple-400 hover:text-purple-300 hover:underline break-all bg-gray-950/40 px-3 py-1.5 rounded border border-gray-900"
                       >
-                        {l.split('//')[1]?.split('/')[0]} ↗
+                        🔗 {s}
                       </a>
                     ))}
+                    {report.social_links.length === 0 && (
+                      <span className="text-gray-500 italic">No social media links detected.</span>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
