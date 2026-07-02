@@ -7,6 +7,20 @@ class LeadsRepository {
   async upsert(leadData) {
     logger.debug(`[LeadsRepository] Upserting lead: ${leadData.name}`);
     
+    if (leadData.phone) {
+      try {
+        const { data: existing } = await supabase
+          .from('leads')
+          .select('id, name')
+          .eq('phone', leadData.phone)
+          .maybeSingle();
+          
+        if (existing) {
+          logger.warn(`[LeadsRepository] DUPLICATE WARNING: Lead with phone ${leadData.phone} already exists (Name: "${existing.name}"). Merging details...`);
+        }
+      } catch (e) {}
+    }
+
     // In Supabase client library: upsert resolves conflict based on unique columns automatically
     const { data, error } = await supabase
       .from('leads')

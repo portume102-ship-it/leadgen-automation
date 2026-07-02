@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 
+import { supabaseBrowser } from '@/lib/supabase'
+
 interface ScrapeJob {
   id: string
   created_at: string
@@ -56,6 +58,7 @@ export default function ScraperPage() {
   const [jobs, setJobs] = useState<ScrapeJob[]>([])
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [selectedJob, setSelectedJob] = useState<ScrapeJob | null>(null)
+  const [recentLeads, setRecentLeads] = useState<any[]>([])
 
   // Fetch all jobs
   async function fetchJobs() {
@@ -77,10 +80,30 @@ export default function ScraperPage() {
     }
   }
 
-  // Poll jobs list every 5 seconds
+  // Fetch recently scraped leads directly from DB
+  async function fetchRecentLeads() {
+    try {
+      const { data, error } = await supabaseBrowser
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (!error && data) {
+        setRecentLeads(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch recent leads:', err)
+    }
+  }
+
+  // Poll jobs list and recent leads every 5 seconds
   useEffect(() => {
     fetchJobs()
-    const interval = setInterval(fetchJobs, 5000)
+    fetchRecentLeads()
+    const interval = setInterval(() => {
+      fetchJobs()
+      fetchRecentLeads()
+    }, 5000)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJob?.id])
@@ -235,13 +258,20 @@ export default function ScraperPage() {
         throw new Error(data.error || 'Failed to submit lead')
       }
 
-      toast.success('Lead added successfully via n8n pipeline!', { id: toastId })
+      if (data.warning) {
+        toast.success('Lead saved (duplicate warning)', { id: toastId })
+        toast(data.warning, { icon: '⚠️', duration: 6000 })
+      } else {
+        toast.success('Lead added successfully directly to database!', { id: toastId })
+      }
+
       setName('')
       setPhone('')
       setEmail('')
       setLeadCity('')
       setCategory('')
       setWebsite('')
+      fetchRecentLeads() // reload list to show new manual lead
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to submit lead'
       toast.error(message, { id: toastId })
@@ -506,6 +536,50 @@ export default function ScraperPage() {
               <div className="text-center py-12 text-gray-500 text-xs">
                 <p className="font-medium text-sm text-gray-400 mb-1">No active scraping job running</p>
                 <p>Configure and queue a new job on the left panel to begin.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Recently Scraped Leads panel */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
+            <h3 className="font-bold text-gray-200 text-lg mb-4 flex items-center justify-between">
+              <span>📊 Recently Scraped Leads</span>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Live Database Sync</span>
+            </h3>
+
+            {recentLeads.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-xs">
+                No leads scraped yet. Start a job to see results stream in.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-850 text-gray-500 font-semibold uppercase tracking-wider text-[10px]">
+                      <th className="pb-3 pr-2">Name</th>
+                      <th className="pb-3 pr-2">Phone</th>
+                      <th className="pb-3 pr-2">Category</th>
+                      <th className="pb-3 pr-2">City</th>
+                      <th className="pb-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-850 text-gray-300">
+                    {recentLeads.map((lead) => (
+                      <tr key={lead.id} className="hover:bg-gray-950/30 transition-colors">
+                        <td className="py-3 pr-2 font-medium text-white max-w-[150px] truncate">{lead.name}</td>
+                        <td className="py-3 pr-2 font-mono text-[11px] text-gray-400">{lead.phone || 'N/A'}</td>
+                        <td className="py-3 pr-2 text-gray-400 max-w-[100px] truncate">{lead.category || 'N/A'}</td>
+                        <td className="py-3 pr-2 text-gray-400">{lead.city || 'N/A'}</td>
+                        <td className="py-3 text-right">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/10 text-green-400 text-[10px] font-medium border border-green-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                            Saved
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
