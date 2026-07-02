@@ -84,8 +84,24 @@ class BrowserManager {
     const contextId = `context_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     logger.info(`[BROWSER] New Context Created. ${contextId}`);
     
+    const proxyConfig = process.env.PROXY_SERVER ? {
+      proxy: {
+        server: process.env.PROXY_SERVER,
+        username: process.env.PROXY_USERNAME,
+        password: process.env.PROXY_PASSWORD
+      }
+    } : {};
+    
     const context = await this.browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      viewport: { width: 1280, height: 800 },
+      deviceScaleFactor: 1,
+      extraHTTPHeaders: {
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      ...proxyConfig,
       ...options
     });
 
