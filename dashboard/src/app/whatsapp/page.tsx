@@ -20,6 +20,7 @@ export default function WhatsappManagerPage() {
 
   // Test message state
   const [testPhone, setTestPhone] = useState('')
+  const [countryCode, setCountryCode] = useState('+91')
   const [testMessage, setTestMessage] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
   const sendAbortRef = React.useRef<AbortController | null>(null)
@@ -293,13 +294,21 @@ export default function WhatsappManagerPage() {
     
     // Create new abort controller
     sendAbortRef.current = new AbortController()
+
+    // Normalize phone number
+    let finalPhone = testPhone.trim()
+    if (!finalPhone.startsWith('+')) {
+      // Remove any leading zeroes and non-digit characters
+      finalPhone = finalPhone.replace(/^0+/, '').replace(/\D/g, '')
+      finalPhone = `${countryCode}${finalPhone}`
+    }
     
     try {
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: testPhone.trim(),
+          phone: finalPhone,
           message: testMessage.trim()
         }),
         signal: sendAbortRef.current.signal
@@ -496,14 +505,36 @@ export default function WhatsappManagerPage() {
             <form onSubmit={handleSendTestMessage} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Recipient Phone</label>
-                <input
-                  type="text"
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="e.g. +919999999999"
-                  required
-                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 cursor-pointer"
+                  >
+                    <option value="+91">🇮🇳 +91 (IN)</option>
+                    <option value="+1">🇺🇸 +1 (US)</option>
+                    <option value="+44">🇬🇧 +44 (UK)</option>
+                    <option value="+61">🇦🇺 +61 (AU)</option>
+                    <option value="+971">🇦🇪 +971 (AE)</option>
+                    <option value="+966">🇸🇦 +966 (SA)</option>
+                    <option value="+49">🇩🇪 +49 (DE)</option>
+                    <option value="+33">🇫🇷 +33 (FR)</option>
+                    <option value="+65">🇸🇬 +65 (SG)</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder={
+                      countryCode === '+91' ? 'e.g. 9876543210' :
+                      countryCode === '+1' ? 'e.g. 2025550143' :
+                      countryCode === '+44' ? 'e.g. 7911123456' :
+                      'Enter phone number digits...'
+                    }
+                    required
+                    className="flex-1 rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Message Content</label>
