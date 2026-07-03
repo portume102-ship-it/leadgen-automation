@@ -58,6 +58,46 @@ function resetConnectionState() {
   }
 }
 
+function purgeSessionAuth() {
+  addLog('info', 'Purging session credentials...');
+  const authDir = '/app/.wwebjs_auth';
+  if (fs.existsSync(authDir)) {
+    try {
+      // resiliant clear: first overwrite and unlink key creds.json
+      const credsPath = path.join(authDir, 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        try {
+          fs.writeFileSync(credsPath, '{}', 'utf8');
+          fs.unlinkSync(credsPath);
+          addLog('info', 'Overwrote and unlinked creds.json successfully');
+        } catch (e) {
+          addLog('warn', `Failed to delete creds.json: ${e.message}`);
+        }
+      }
+
+      // try unlinking other files individually
+      const files = fs.readdirSync(authDir);
+      for (const file of files) {
+        try {
+          fs.unlinkSync(path.join(authDir, file));
+        } catch (e) {
+          // ignore locked files
+        }
+      }
+
+      // try to delete the directory itself
+      try {
+        fs.rmdirSync(authDir);
+      } catch (e) {
+        // ignore if not empty
+      }
+      addLog('warn', '✓ Session credentials cleared.');
+    } catch (err) {
+      addLog('error', `Failed to purge session keys: ${err.message}`);
+    }
+  }
+}
+
 async function destroySocket() {
   if (!sock) {
     addLog('info', 'No socket active to destroy.');
@@ -303,23 +343,13 @@ async function startWhatsApp() {
         const isUnauthorized = statusCode === 401 || String(lastDisconnect?.error?.data?.reason) === '401';
         const isLoggedOut = statusCode === DisconnectReason.loggedOut || isUnauthorized;
 
-        if (isUnauthorized) {
-          addLog('warn', '401 Unauthorized session error detected. Purging auth session directory...');
-          const authDir = '/app/.wwebjs_auth';
-          if (fs.existsSync(authDir)) {
-            try {
-              fs.rmSync(authDir, { recursive: true, force: true });
-              addLog('warn', '✓ Session folder purged successfully.');
-            } catch (err) {
-              addLog('error', `Failed to purge session folder: ${err.message}`);
-            }
-          }
-        }
-
         if (isLoggedOut) {
           connectionState = 'disconnected';
           addLog('warn', 'Session terminated or logged out. Resetting socket to generate a fresh QR code...');
           destroySocket().then(() => {
+            if (isUnauthorized) {
+              purgeSessionAuth();
+            }
             resetConnectionState();
             // Automatically boot startWhatsApp to generate fresh QR
             connectionState = 'connecting';
@@ -485,6 +515,9 @@ app.post('/disconnect', async (req, res) => {
     
     // Close socket, remove listeners, clear timeouts, nullify sock
     await destroySocket();
+
+    // Clear session credentials from disk
+    purgeSessionAuth();
 
     // Reset connection state
     resetConnectionState();
