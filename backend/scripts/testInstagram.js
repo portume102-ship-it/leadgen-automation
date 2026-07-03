@@ -52,7 +52,8 @@ async function run() {
   page.on('response', async (response) => {
     try {
       const rUrl = response.url();
-      if (rUrl.includes('web_profile_info') && rUrl.includes(username)) {
+      if (rUrl.toLowerCase().includes('web_profile_info')) {
+        console.log(`📡 Detected profile API network request: ${rUrl}`);
         const body = await response.text().catch(() => '');
         if (body && (body.includes('bio_links') || body.includes('biography'))) {
           capturedApiData = body;

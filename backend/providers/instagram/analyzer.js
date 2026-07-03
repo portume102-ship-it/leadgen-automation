@@ -51,14 +51,19 @@ class InstagramAnalyzer {
       page.on('response', async (response) => {
         try {
           const url = response.url();
-          if (url.includes('web_profile_info') && url.includes(username)) {
+          if (url.toLowerCase().includes('web_profile_info')) {
+            logger.info(`[Instagram Analyzer] Detected profile API network request: ${url}`);
             const body = await response.text().catch(() => '');
             if (body && (body.includes('bio_links') || body.includes('biography'))) {
               capturedApiData = body;
               logger.info(`[Instagram Analyzer] ✅ Captured profile API response (${body.length} bytes)`);
+            } else {
+              logger.warn(`[Instagram Analyzer] ⚠️ Profile API response was empty or lacked biography/bio_links.`);
             }
           }
-        } catch (_) {}
+        } catch (err) {
+          logger.error(`[Instagram Analyzer] ❌ Error reading response text: ${err.message}`);
+        }
       });
       // ─────────────────────────────────────────────────────────────────────
 
