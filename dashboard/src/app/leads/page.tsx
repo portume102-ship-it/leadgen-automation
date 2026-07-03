@@ -9,6 +9,15 @@ import StatusBadge from './components/StatusBadge'
 
 const PER_PAGE = 25
 
+interface JobOption {
+  id: string
+  keyword: string
+  city: string
+  current_provider: string
+  created_at: string
+  status: string
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [totalLeads, setTotalLeads] = useState(0)
@@ -21,6 +30,10 @@ export default function LeadsPage() {
   const [status, setStatus] = useState('')
   const [city, setCity] = useState('')
   const [category, setCategory] = useState('')
+  const [jobs, setJobs] = useState<JobOption[]>([])
+  const [selectedJobId, setSelectedJobId] = useState('')
+  const [jobSearch, setJobSearch] = useState('')
+  const [showJobDropdown, setShowJobDropdown] = useState(false)
 
   // Pagination State
   const [page, setPage] = useState(1)
@@ -78,6 +91,7 @@ export default function LeadsPage() {
       if (status)              params.set('status',   status)
       if (city.trim())         params.set('city',     city.trim())
       if (category)            params.set('category', category)
+      if (selectedJobId)       params.set('job_id',   selectedJobId)
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim())
 
       const res = await fetch(`/api/leads?${params.toString()}`)
@@ -96,15 +110,41 @@ export default function LeadsPage() {
     }
   }
 
+  async function fetchJobs() {
+    try {
+      const res = await fetch('/api/scraper/jobs')
+      const data = await res.json()
+      if (res.ok && data.jobs) {
+        setJobs(data.jobs)
+      }
+    } catch (err) {
+      console.error('Failed to fetch jobs:', err)
+    }
+  }
+
+  // Close job dropdown when clicking outside
+  useEffect(() => {
+    if (!showJobDropdown) return
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.relative')) {
+        setShowJobDropdown(false)
+      }
+    }
+    document.addEventListener('click', handleOutsideClick)
+    return () => document.removeEventListener('click', handleOutsideClick)
+  }, [showJobDropdown])
+
   useEffect(() => {
     fetchCategories()
+    fetchJobs()
   }, [])
 
   useEffect(() => {
     fetchLeads()
     setSelectedIds([]) // clear selection when filters/page changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, status, city, category, page])
+  }, [debouncedSearch, status, city, category, page, selectedJobId])
 
   // --- Row Actions ---
   async function handleUpdateStatus(id: string, newStatus: LeadStatus) {
@@ -313,6 +353,7 @@ export default function LeadsPage() {
     setCity('')
     setCategory('')
     setSearch('')
+    setSelectedJobId('')
     setPage(1)
   }
 
@@ -341,7 +382,7 @@ export default function LeadsPage() {
 
       {/* Filter Bar (Sticky Top) */}
       <div className="sticky top-0 z-20 bg-[#F4F3EF]/90 backdrop-blur-md py-2 border-b border-[#E4E3DD]/40">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-white border border-[#E4E3DD] p-4 rounded-2xl shadow-sm">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 bg-white border border-[#E4E3DD] p-4 rounded-2xl shadow-sm">
           {/* Search Input */}
           <div className="col-span-2 md:col-span-1">
             <label htmlFor="search" className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Search</label>
@@ -353,6 +394,98 @@ export default function LeadsPage() {
               placeholder="Name or phone..."
               className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold placeholder-gray-400 focus:outline-none focus:border-gray-500 transition-colors"
             />
+          </div>
+
+          {/* Scrape Job Filter */}
+          <div className="relative col-span-2 md:col-span-1">
+            <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Filter Scrape Run</label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowJobDropdown(!showJobDropdown)}
+                className="w-full flex justify-between items-center rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-bold text-left focus:outline-none focus:border-gray-500 transition-colors"
+              >
+                <span className="truncate">
+                  {selectedJobId 
+                    ? (() => {
+                        const job = jobs.find(j => j.id === selectedJobId)
+                        if (!job) return 'All Jobs'
+                        const providerLabel = job.current_provider?.replace('google_maps', 'G-Maps').replace('google_search', 'Search')
+                        const cleanKeyword = job.keyword.replace(/\s*\[Area:.*?\]$/, '')
+                        return `📌 [${providerLabel}] ${cleanKeyword} in ${job.city}`
+                      })()
+                    : 'All Jobs'}
+                </span>
+                <span className="ml-2 text-[10px] text-gray-400">▼</span>
+              </button>
+
+              {showJobDropdown && (
+                <div className="absolute left-0 right-0 mt-2 bg-white border border-[#E4E3DD] rounded-2xl p-3 shadow-xl z-30 max-h-[300px] flex flex-col gap-2 w-[280px] md:w-[320px]">
+                  <input
+                    type="text"
+                    value={jobSearch}
+                    onChange={(e) => setJobSearch(e.target.value)}
+                    placeholder="Search job keyword/city..."
+                    className="w-full rounded-lg bg-[#F4F3EF] border border-[#E4E3DD] px-3 py-2 text-xs font-semibold placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  />
+                  <div className="overflow-y-auto flex-1 flex flex-col divide-y divide-[#F4F3EF] max-h-[200px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedJobId('')
+                        setShowJobDropdown(false)
+                        setJobSearch('')
+                        setPage(1)
+                      }}
+                      className={`w-full text-left py-2 px-2 text-xs font-semibold hover:bg-[#F4F3EF] rounded-lg transition-colors ${!selectedJobId ? 'text-black bg-[#F4F3EF]' : 'text-gray-600'}`}
+                    >
+                      🌍 Show All Jobs
+                    </button>
+                    {jobs.filter(job => {
+                      const q = jobSearch.toLowerCase()
+                      return (
+                        (job.keyword || '').toLowerCase().includes(q) ||
+                        (job.city || '').toLowerCase().includes(q) ||
+                        (job.current_provider || '').toLowerCase().includes(q)
+                      )
+                    }).map((job) => {
+                      const providerLabel = job.current_provider?.replace('google_maps', 'G-Maps').replace('google_search', 'Search')
+                      const dateLabel = new Date(job.created_at).toLocaleDateString()
+                      const timeLabel = new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      
+                      let displayKeyword = job.keyword
+                      let areaTag = ''
+                      const areaMatch = job.keyword.match(/^(.*?)\s*\[Area:\s*(.*?)\]$/)
+                      if (areaMatch) {
+                        displayKeyword = areaMatch[1]
+                        areaTag = ` (${areaMatch[2]})`
+                      }
+
+                      return (
+                        <button
+                          key={job.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedJobId(job.id)
+                            setShowJobDropdown(false)
+                            setJobSearch('')
+                            setPage(1)
+                          }}
+                          className={`w-full text-left py-2.5 px-2 text-xs hover:bg-[#F4F3EF] rounded-lg transition-colors flex flex-col gap-0.5 ${selectedJobId === job.id ? 'bg-[#F4F3EF] text-black font-bold' : 'text-gray-600'}`}
+                        >
+                          <span className="font-bold truncate text-[#1C1C1E] text-left">
+                            📌 [{providerLabel}] {displayKeyword}{areaTag} in {job.city}
+                          </span>
+                          <span className="text-[10px] text-gray-400 text-left">
+                            📅 Run on {dateLabel} at {timeLabel}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Status Dropdown */}

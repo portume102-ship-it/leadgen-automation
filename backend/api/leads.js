@@ -35,7 +35,7 @@ router.get('/recent', async (req, res, next) => {
 // GET /api/leads?limit=25&offset=0&city=...&category=...&status=...&search=...
 router.get('/', async (req, res, next) => {
   try {
-    const { limit = 25, offset = 0, city, category, status, search } = req.query;
+    const { limit = 25, offset = 0, city, category, status, search, job_id } = req.query;
     const result = await leadsRepository.getAll({
       limit: parseInt(limit) || 25,
       offset: parseInt(offset) || 0,
@@ -43,6 +43,7 @@ router.get('/', async (req, res, next) => {
       category: category || undefined,
       status: status || undefined,
       search: search || undefined,
+      job_id: job_id || undefined,
     });
     fmt(res, req, result);
   } catch (err) {

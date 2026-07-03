@@ -91,8 +91,8 @@ class LeadsRepository {
     return data || [];
   }
 
-  async getAll({ limit = 50, offset = 0, city, category, status, search } = {}) {
-    logger.debug(`[LeadsRepository] Fetching all leads (limit=${limit}, offset=${offset})`);
+  async getAll({ limit = 50, offset = 0, city, category, status, search, job_id } = {}) {
+    logger.debug(`[LeadsRepository] Fetching all leads (limit=${limit}, offset=${offset}, job_id=${job_id})`);
     let query = supabase
       .from('leads')
       .select('*', { count: 'exact' })
@@ -102,6 +102,7 @@ class LeadsRepository {
     if (city) query = query.ilike('city', `%${city}%`);
     if (category) query = query.eq('category', category);
     if (status) query = query.eq('status', status);
+    if (job_id) query = query.eq('job_id', job_id);
     if (search) query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
 
     const { data, count, error } = await query;

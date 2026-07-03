@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
   const status  = searchParams.get('status')  || ''
   const city    = searchParams.get('city')    || ''
   const category = searchParams.get('category') || ''
+  const job_id  = searchParams.get('job_id')  || ''
   const offset  = (page - 1) * perPage
 
   try {
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     if (status)   query = query.eq('status', status)
     if (city)     query = query.ilike('city', `%${city}%`)
     if (category) query = query.eq('category', category)
+    if (job_id)   query = query.eq('job_id', job_id)
     if (search)   query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
 
     const { data, count, error } = await query
