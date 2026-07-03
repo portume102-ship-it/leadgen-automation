@@ -24,6 +24,7 @@ export async function GET() {
     
     // Normalize to camelCase
     return NextResponse.json({
+      state: data.state,
       whatsappReady: data.whatsapp_ready,
       serviceStartedAt: data.service_started_at,
       qrGeneratedAt: data.qr_generated_at,

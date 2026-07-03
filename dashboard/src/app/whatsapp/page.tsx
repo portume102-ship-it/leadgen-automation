@@ -33,6 +33,7 @@ export default function WhatsappManagerPage() {
 
   // Session Status State
   interface SessionStatus {
+    state: 'idle' | 'connecting' | 'qr_waiting' | 'connected' | 'disconnected'
     whatsappReady: boolean
     serviceStartedAt: string | null
     qrGeneratedAt: string | null
@@ -44,6 +45,7 @@ export default function WhatsappManagerPage() {
   const [uptimeStr, setUptimeStr] = useState('00:00:00')
   const [qrAgeStr, setQrAgeStr] = useState('')
   const [reconnecting, setReconnecting] = useState(false)
+  const [connecting, setConnecting] = useState(false)
 
   // Logs State
   interface LogEntry {
@@ -196,6 +198,29 @@ export default function WhatsappManagerPage() {
     }
   }
 
+  // Connect Action Handler
+  async function handleConnectService() {
+    setConnecting(true)
+    const toastId = toast.loading('Initiating connection...')
+    try {
+      const res = await fetch('/api/whatsapp/connect', {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to connect')
+      }
+      toast.success('Connection successfully initiated!', { id: toastId })
+      fetchSessionStatus()
+      fetchLogs()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to connect'
+      toast.error(message, { id: toastId })
+    } finally {
+      setConnecting(false)
+    }
+  }
+
   // Logs Auto-Scroll Effect
   useEffect(() => {
     if (logsContainerRef.current) {
@@ -339,13 +364,42 @@ export default function WhatsappManagerPage() {
           <h1 className="text-3xl font-black text-[#1C1C1E] tracking-tight">WhatsApp Engine Manager</h1>
           <p className="mt-1 text-sm text-gray-500 font-medium">Configure automated outreach channels, verify QR authentication sheets, and monitor active socket links.</p>
         </div>
-        <button
-          onClick={handleReconnect}
-          disabled={reconnecting}
-          className="flex items-center gap-2 rounded-xl bg-[#1C1C1E] hover:bg-[#252528] text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider disabled:opacity-50"
-        >
-          {reconnecting ? 'Resetting...' : '🔄 Reset Session'}
-        </button>
+        <div className="flex gap-2">
+          {(!sessionStatus || sessionStatus.state === 'idle' || sessionStatus.state === 'disconnected') ? (
+            <button
+              onClick={handleConnectService}
+              disabled={connecting}
+              className="flex items-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+            >
+              {connecting ? 'Connecting...' : '▶ Start Connection'}
+            </button>
+          ) : (sessionStatus.state === 'connecting' || sessionStatus.state === 'qr_waiting') ? (
+            <button
+              onClick={handleDisconnectService}
+              disabled={disconnecting}
+              className="flex items-center gap-2 rounded-xl bg-red-650 hover:bg-red-700 text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+            >
+              {disconnecting ? 'Stopping...' : '⏹ Stop Connection'}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleReconnect}
+                disabled={reconnecting}
+                className="flex items-center gap-2 rounded-xl bg-[#1C1C1E] hover:bg-[#252528] text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {reconnecting ? 'Resetting...' : '🔄 Reset Session'}
+              </button>
+              <button
+                onClick={handleDisconnectService}
+                disabled={disconnecting}
+                className="flex items-center gap-2 rounded-xl bg-red-650 hover:bg-red-700 text-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+              >
+                {disconnecting ? 'Stopping...' : '⏹ Disconnect'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -398,7 +452,19 @@ export default function WhatsappManagerPage() {
             <div className="rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] space-y-4 flex flex-col items-center">
               <h4 className="font-bold text-[#1C1C1E] text-xs uppercase tracking-wider self-start text-gray-500">Scan QR Code</h4>
               
-              {qrCode ? (
+              {(!sessionStatus || sessionStatus.state === 'idle' || sessionStatus.state === 'disconnected') ? (
+                <div className="w-[232px] h-[232px] rounded-2xl bg-gray-50 border border-[#E4E3DD] flex flex-col items-center justify-center text-center p-6 text-xs text-gray-400 font-semibold space-y-3">
+                  <span className="text-xl">💤</span>
+                  <p>WhatsApp connection is stopped.</p>
+                  <button
+                    onClick={handleConnectService}
+                    disabled={connecting}
+                    className="rounded-xl bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 transition-colors"
+                  >
+                    {connecting ? 'Connecting...' : 'Start Connection'}
+                  </button>
+                </div>
+              ) : qrCode ? (
                 <div className="bg-white p-4 rounded-2xl border border-[#E4E3DD] shadow-inner">
                   <QRCodeSVG value={qrCode} size={200} />
                 </div>
@@ -408,15 +474,19 @@ export default function WhatsappManagerPage() {
                 </div>
               )}
 
-              <div className="text-center w-full">
-                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">QR Code Refresh In</span>
-                <p className="text-xl font-black text-gray-800 tracking-tight font-mono">{qrCountdown}s</p>
-                {qrAgeStr && <span className="text-[9px] text-gray-400 font-medium">Generated: {qrAgeStr}</span>}
-              </div>
+              {(sessionStatus && sessionStatus.state !== 'idle' && sessionStatus.state !== 'disconnected') && (
+                <>
+                  <div className="text-center w-full">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">QR Code Refresh In</span>
+                    <p className="text-xl font-black text-gray-800 tracking-tight font-mono">{qrCountdown}s</p>
+                    {qrAgeStr && <span className="text-[9px] text-gray-400 font-medium">Generated: {qrAgeStr}</span>}
+                  </div>
 
-              <div className="w-full text-[10px] text-gray-400 leading-relaxed bg-[#F4F3EF] p-4 rounded-xl border border-[#E4E3DD] font-medium">
-                Open WhatsApp on your phone &rarr; Tap Menu or Settings &rarr; Select Linked Devices &rarr; Tap Link a Device.
-              </div>
+                  <div className="w-full text-[10px] text-gray-400 leading-relaxed bg-[#F4F3EF] p-4 rounded-xl border border-[#E4E3DD] font-medium">
+                    Open WhatsApp on your phone &rarr; Tap Menu or Settings &rarr; Select Linked Devices &rarr; Tap Link a Device.
+                  </div>
+                </>
+              )}
             </div>
           )}
 

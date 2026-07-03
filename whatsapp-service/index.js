@@ -345,15 +345,13 @@ async function startWhatsApp() {
 
         if (isLoggedOut) {
           connectionState = 'disconnected';
-          addLog('warn', 'Session terminated or logged out. Resetting socket to generate a fresh QR code...');
+          addLog('warn', 'Session terminated or logged out. Session stopped. Please click Start Connection on the dashboard to log in.');
           destroySocket().then(() => {
             if (isUnauthorized) {
               purgeSessionAuth();
             }
             resetConnectionState();
-            // Automatically boot startWhatsApp to generate fresh QR
-            connectionState = 'connecting';
-            startWhatsApp();
+            connectionState = 'idle';
           });
         } else {
           connectionState = 'connecting';
