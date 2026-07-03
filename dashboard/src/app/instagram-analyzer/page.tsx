@@ -1,84 +1,19 @@
 // dashboard/src/app/instagram-analyzer/page.tsx
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import toast from 'react-hot-toast'
-
-interface InstagramPost {
-  shortcode: string
-  url: string
-  thumbnail: string
-  caption: string
-  hashtags: string[]
-  type: string
-  likes_count: number
-  comments_count: number
-  date: string
-}
+import { calculateInstagramStats, InstagramPost, InstagramProfile } from '@/utils/instagramStats'
 
 interface BioLink {
   text: string
   href: string
 }
 
-interface InstagramReport {
-  username: string
-  display_name: string
-  bio: string | null
-  website: string | null
+interface InstagramReport extends InstagramProfile {
   bio_links: BioLink[]
-  followers: number
-  following: number
-  posts_count: number
-  verified: boolean
-  health_score: number
-  consistency_score: number
-  engagement_rate: number
   posts: InstagramPost[]
-  analytics?: {
-    timeframe: string
-    scraped_at: string
-    total_analyzed: number
-    likes: {
-      average: number
-      peak: number
-      min: number
-      total: number
-    }
-    comments: {
-      average: number
-      peak: number
-      min: number
-      total: number
-    }
-    posts_vs_reels: {
-      posts: {
-        count: number
-        avg_likes: number
-        avg_comments: number
-      }
-      reels: {
-        count: number
-        avg_likes: number
-        avg_comments: number
-      }
-    }
-    engagement_rate: number
-    posts_per_week: number
-    peak_post: {
-      shortcode: string
-      url: string
-      likes: number
-      comments: number
-      date: string
-      type: string
-      caption: string
-    } | null
-    insights: {
-      health_score: number
-      consistency_score: number
-    }
-  }
+  reels: InstagramPost[]
 }
 
 interface LogEntry {
@@ -106,6 +41,19 @@ export default function InstagramAnalyzerPage() {
       logEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [logs])
+
+  // Dynamic Client-Side Calculations offloads CPU loads from Backend!
+  const analytics = useMemo(() => {
+    if (!report) return null
+    return calculateInstagramStats(
+      report,
+      report.posts || [],
+      report.reels || [],
+      timeframe,
+      scrapeHistory,
+      scrapeReels
+    )
+  }, [report, timeframe, scrapeHistory, scrapeReels])
 
   async function handleAudit(e: React.FormEvent) {
     e.preventDefault()
@@ -162,6 +110,12 @@ export default function InstagramAnalyzerPage() {
       const data = await res.json()
       clearInterval(pollInterval)
 
+      if (res.status === 404 || data.error === 'profile_not_found') {
+        toast.error('This Instagram username does not exist. Please check the spelling and try again.', { id: toastId })
+        setLogs(prev => [...prev, `❌ Error: Profile @${username} does not exist.`])
+        return
+      }
+
       if (res.ok && data.report) {
         setReport(data.report)
         // Fetch logs one final time to capture completeness
@@ -178,7 +132,7 @@ export default function InstagramAnalyzerPage() {
             setLogs(igLogs)
           }
         }
-        toast.success('Instagram audit completed!', { id: toastId })
+        toast.success('Instagram audit completed successfully!', { id: toastId })
       } else {
         throw new Error(data.error || 'Audit failed')
       }
@@ -300,7 +254,7 @@ export default function InstagramAnalyzerPage() {
           <div className="flex-1 p-4 font-mono text-[10px] text-gray-600 overflow-y-auto space-y-1.5 bg-[#F4F3EF]/30">
             {logs.map((log, index) => (
               <div key={index} className="leading-relaxed break-all">
-                <span className={log.startsWith('❌') ? 'text-red-650 font-bold' : 'text-gray-650'}>{log}</span>
+                <span className={log.startsWith('❌') ? 'text-red-650 font-bold' : 'text-gray-655'}>{log}</span>
               </div>
             ))}
             <div ref={logEndRef} />
@@ -309,8 +263,8 @@ export default function InstagramAnalyzerPage() {
       )}
 
       {/* Report results */}
-      {report && (
-        <div className="grid gap-6 lg:grid-cols-3 animate-fade-in">
+      {report && analytics && (
+        <div className="grid gap-6 lg:grid-cols-3">
           {/* Left panel: Info & Metrics */}
           <div className="lg:col-span-1 space-y-6">
             <div className="rounded-2xl border border-[#E4E3DD] bg-white p-6 space-y-4 text-center shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)]">
@@ -371,15 +325,15 @@ export default function InstagramAnalyzerPage() {
               
               <div className="flex justify-between items-center border-b border-[#E4E3DD]/60 pb-2">
                 <span className="text-gray-500 font-semibold">Health Index</span>
-                <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${getScoreColor(report.health_score)}`}>{report.health_score}</span>
+                <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${getScoreColor(analytics.insights.health_score)}`}>{analytics.insights.health_score}</span>
               </div>
               <div className="flex justify-between items-center border-b border-[#E4E3DD]/60 pb-2">
                 <span className="text-gray-500 font-semibold">Consistency</span>
-                <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${getScoreColor(report.consistency_score)}`}>{report.consistency_score}</span>
+                <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${getScoreColor(analytics.insights.consistency_score)}`}>{analytics.insights.consistency_score}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500 font-semibold">Engagement Rate</span>
-                <span className="text-gray-800 font-black text-sm">{report.engagement_rate}%</span>
+                <span className="text-gray-800 font-black text-sm">{analytics.engagement_rate}%</span>
               </div>
             </div>
           </div>
@@ -404,70 +358,68 @@ export default function InstagramAnalyzerPage() {
                 </div>
               </div>
 
-              {/* Mathematical Report details if available */}
-              {report.analytics && (
-                <div className="space-y-6 pt-2 border-t border-[#E4E3DD]">
-                  <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider">📈 Mathematical Scraper Insights ({report.analytics.timeframe === 'all' ? 'All Time' : `Last ${report.analytics.timeframe.toUpperCase()}`})</h4>
-                  
-                  {/* Stats Grid */}
-                  <div className="grid gap-4 sm:grid-cols-3 text-xs">
-                    <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
-                      <span className="text-gray-400 font-bold uppercase text-[9px] block">Engagement Averages</span>
-                      <p className="text-gray-800 font-bold">👍 Likes: <span className="font-black font-mono">{report.analytics.likes.average.toLocaleString()}</span></p>
-                      <p className="text-gray-800 font-bold">💬 Comments: <span className="font-black font-mono">{report.analytics.comments.average.toLocaleString()}</span></p>
-                    </div>
-
-                    <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
-                      <span className="text-gray-400 font-bold uppercase text-[9px] block">Peak Metrics</span>
-                      <p className="text-gray-800 font-bold">🔥 Max Likes: <span className="font-black font-mono">{report.analytics.likes.peak.toLocaleString()}</span></p>
-                      <p className="text-gray-800 font-bold">🔥 Max Comments: <span className="font-black font-mono">{report.analytics.comments.peak.toLocaleString()}</span></p>
-                    </div>
-
-                    <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
-                      <span className="text-gray-400 font-bold uppercase text-[9px] block">Posting Frequency</span>
-                      <p className="text-gray-800 font-bold">📅 Cadence: <span className="font-black font-mono">{report.analytics.posts_per_week}</span> posts/week</p>
-                      <p className="text-gray-800 font-bold">📊 Analyzed: <span className="font-black font-mono">{report.analytics.total_analyzed}</span> posts</p>
-                    </div>
+              {/* Mathematical Report details */}
+              <div className="space-y-6 pt-2 border-t border-[#E4E3DD]">
+                <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider">📈 Client-Side Analytics ({analytics.timeframe === 'all' ? 'All Time' : `Last ${analytics.timeframe.toUpperCase()}`})</h4>
+                
+                {/* Stats Grid */}
+                <div className="grid gap-4 sm:grid-cols-3 text-xs">
+                  <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
+                    <span className="text-gray-400 font-bold uppercase text-[9px] block">Engagement Averages</span>
+                    <p className="text-gray-800 font-bold">👍 Likes: <span className="font-black font-mono">{analytics.likes.average.toLocaleString()}</span></p>
+                    <p className="text-gray-800 font-bold">💬 Comments: <span className="font-black font-mono">{analytics.comments.average.toLocaleString()}</span></p>
                   </div>
 
-                  {/* Reels vs Posts Split */}
-                  <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-5 space-y-3.5 text-xs">
-                    <h5 className="font-bold text-gray-500 uppercase text-[9px] tracking-wider border-b border-[#E4E3DD]/60 pb-1.5">🎥 Reels vs 🖼️ Posts Comparison</h5>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <span className="text-gray-450 font-bold text-[9px] uppercase tracking-wider block">Standard Image/Carousel Posts</span>
-                        <p className="text-gray-800 font-semibold">Count: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.posts.count}</span></p>
-                        <p className="text-gray-800 font-semibold">Avg Likes: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.posts.avg_likes.toLocaleString()}</span></p>
-                        <p className="text-gray-800 font-semibold">Avg Comments: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.posts.avg_comments.toLocaleString()}</span></p>
-                      </div>
-                      <div className="space-y-1.5 border-t sm:border-t-0 sm:border-l border-[#E4E3DD]/60 pt-3.5 sm:pt-0 sm:pl-4">
-                        <span className="text-gray-455 font-bold text-[9px] uppercase tracking-wider block">Reels / Video Content</span>
-                        <p className="text-gray-800 font-semibold">Count: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.reels.count}</span></p>
-                        <p className="text-gray-800 font-semibold">Avg Likes: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.reels.avg_likes.toLocaleString()}</span></p>
-                        <p className="text-gray-800 font-semibold">Avg Comments: <span className="font-bold font-mono">{report.analytics.posts_vs_reels.reels.avg_comments.toLocaleString()}</span></p>
-                      </div>
-                    </div>
+                  <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
+                    <span className="text-gray-400 font-bold uppercase text-[9px] block">Peak Metrics</span>
+                    <p className="text-gray-800 font-bold">🔥 Max Likes: <span className="font-black font-mono">{analytics.likes.peak.toLocaleString()}</span></p>
+                    <p className="text-gray-800 font-bold">🔥 Max Comments: <span className="font-black font-mono">{analytics.comments.peak.toLocaleString()}</span></p>
                   </div>
 
-                  {/* Peak engagement post */}
-                  {report.analytics.peak_post && (
-                    <div className="rounded-xl border border-[#E4E3DD] p-4.5 bg-gray-50 space-y-3 text-xs leading-relaxed">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-gray-500 uppercase text-[9px] tracking-wider">🔥 Peak Engagement Post</span>
-                        <a href={report.analytics.peak_post.url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">View Post &rarr;</a>
-                      </div>
-                      <p className="text-[10px] text-gray-600 line-clamp-2 italic leading-relaxed">&quot;{report.analytics.peak_post.caption || 'No caption'}&quot;</p>
-                      <div className="flex justify-between items-center text-[10px] text-gray-450 pt-2 border-t border-gray-100 font-bold uppercase tracking-wider">
-                        <span>👍 {report.analytics.peak_post.likes.toLocaleString()} Likes</span>
-                        <span>💬 {report.analytics.peak_post.comments.toLocaleString()} Comments</span>
-                        <span>📅 {new Date(report.analytics.peak_post.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                      </div>
-                    </div>
-                  )}
+                  <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-4 space-y-1.5">
+                    <span className="text-gray-400 font-bold uppercase text-[9px] block">Posting Frequency</span>
+                    <p className="text-gray-800 font-bold">📅 Cadence: <span className="font-black font-mono">{analytics.posts_per_week}</span> posts/week</p>
+                    <p className="text-gray-800 font-bold">📊 Analyzed: <span className="font-black font-mono">{analytics.total_analyzed}</span> posts</p>
+                  </div>
                 </div>
-              )}
 
-              {/* Recent Posts & Reels Grid */}
+                {/* Reels vs Posts Split */}
+                <div className="rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] p-5 space-y-3.5 text-xs">
+                  <h5 className="font-bold text-gray-500 uppercase text-[9px] tracking-wider border-b border-[#E4E3DD]/60 pb-1.5">🎥 Reels vs 🖼️ Posts Comparison</h5>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <span className="text-gray-450 font-bold text-[9px] uppercase tracking-wider block">Standard Image/Carousel Posts</span>
+                      <p className="text-gray-800 font-semibold">Count: <span className="font-bold font-mono">{analytics.posts_vs_reels.posts.count}</span></p>
+                      <p className="text-gray-800 font-semibold">Avg Likes: <span className="font-bold font-mono">{analytics.posts_vs_reels.posts.avg_likes.toLocaleString()}</span></p>
+                      <p className="text-gray-800 font-semibold">Avg Comments: <span className="font-bold font-mono">{analytics.posts_vs_reels.posts.avg_comments.toLocaleString()}</span></p>
+                    </div>
+                    <div className="space-y-1.5 border-t sm:border-t-0 sm:border-l border-[#E4E3DD]/60 pt-3.5 sm:pt-0 sm:pl-4">
+                      <span className="text-gray-455 font-bold text-[9px] uppercase tracking-wider block">Reels / Video Content</span>
+                      <p className="text-gray-800 font-semibold">Count: <span className="font-bold font-mono">{analytics.posts_vs_reels.reels.count}</span></p>
+                      <p className="text-gray-800 font-semibold">Avg Likes: <span className="font-bold font-mono">{analytics.posts_vs_reels.reels.avg_likes.toLocaleString()}</span></p>
+                      <p className="text-gray-800 font-semibold">Avg Comments: <span className="font-bold font-mono">{analytics.posts_vs_reels.reels.avg_comments.toLocaleString()}</span></p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Peak engagement post */}
+                {analytics.peak_post && (
+                  <div className="rounded-xl border border-[#E4E3DD] p-4.5 bg-gray-50 space-y-3 text-xs leading-relaxed">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-gray-500 uppercase text-[9px] tracking-wider">🔥 Peak Engagement Post</span>
+                      <a href={analytics.peak_post.url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">View Post &rarr;</a>
+                    </div>
+                    <p className="text-[10px] text-gray-600 line-clamp-2 italic leading-relaxed">&quot;{analytics.peak_post.caption || 'No caption'}&quot;</p>
+                    <div className="flex justify-between items-center text-[10px] text-gray-455 pt-2 border-t border-gray-100 font-bold uppercase tracking-wider">
+                      <span>👍 {analytics.peak_post.likes.toLocaleString()} Likes</span>
+                      <span>💬 {analytics.peak_post.comments.toLocaleString()} Comments</span>
+                      <span>📅 {new Date(analytics.peak_post.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Scraped Timeline Feed */}
               {report.posts && report.posts.length > 0 && (
                 <div className="space-y-4 pt-2">
                   <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wider flex items-center justify-between">

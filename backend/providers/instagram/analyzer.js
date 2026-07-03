@@ -1,12 +1,7 @@
-// backend/providers/instagram/analyzer.js
-
 const logger = require('../../worker/logger');
 const profileFetcher = require('./profile');
 const postsFetcher = require('./posts');
 const reelsFetcher = require('./reels');
-const engagementCalculator = require('./engagement');
-const insightsGenerator = require('./insights');
-const statsHelper = require('./statsHelper');
 
 class InstagramAnalyzer {
   constructor() {
@@ -97,10 +92,23 @@ class InstagramAnalyzer {
         }
       }
 
-      // 3. Final check — give up if still not on profile
+      // 3. Final check — verify profile exists by inspecting title and text contents
+      const isNotFound = await page.evaluate(() => {
+        const title = document.title || '';
+        const bodyText = document.body ? document.body.innerText : '';
+        return title.includes('Page Not Found') ||
+               bodyText.includes("isn't available") ||
+               bodyText.includes("broken, or the page may have been removed");
+      });
+
+      if (isNotFound) {
+        logger.warn(`[Instagram Analyzer] Profile @${username} does not exist on Instagram.`);
+        return { success: false, error: 'profile_not_found' };
+      }
+
       if (!page.url().includes(`/${username}`)) {
-        logger.warn(`[Instagram Analyzer] Could not reach profile page. Returning structured fallback...`);
-        return this.getFallbackPayload(username);
+        logger.warn(`[Instagram Analyzer] Could not reach profile page @${username}.`);
+        return { success: false, error: 'profile_not_found' };
       }
 
       // Wait for Instagram API calls to fire and be captured
@@ -110,8 +118,8 @@ class InstagramAnalyzer {
       logger.info(`[Instagram Analyzer] Fetching profile metadata (followers, following, bio)...`);
       const profile = await profileFetcher.fetch(page, capturedApiData);
       if (!profile || !profile.display_name) {
-        logger.warn(`[Instagram Analyzer] Profile elements not found. Generating fallback data...`);
-        return this.getFallbackPayload(username);
+        logger.warn(`[Instagram Analyzer] Profile elements not found for @${username}.`);
+        return { success: false, error: 'profile_not_found' };
       }
       
       logger.info(`[Instagram Analyzer] Extracted: Name="${profile.display_name}", Followers=${profile.followers}, Following=${profile.following}`);
@@ -135,11 +143,9 @@ class InstagramAnalyzer {
         logger.info(`[Instagram Analyzer] Skipping reels scraping per configuration.`);
       }
       
-      logger.info(`[Instagram Analyzer] Calculating advanced profile statistics and scores...`);
-      const analytics = statsHelper.calculate(profile, posts, reels, options);
-
       logger.info(`[Instagram Analyzer] Completed audit successfully for @${username}`);
       return {
+        success: true,
         username,
         display_name: profile.display_name,
         bio: profile.bio,
@@ -149,16 +155,13 @@ class InstagramAnalyzer {
         following: profile.following,
         posts_count: profile.posts_count,
         verified: profile.verified,
-        health_score: analytics.insights.health_score,
-        consistency_score: analytics.insights.consistency_score,
-        engagement_rate: analytics.engagement_rate,
         posts: posts || [],
-        analytics: analytics // Include full mathematical report
+        reels: reels || []
       };
 
     } catch (err) {
       logger.error(`[Instagram Analyzer] Modular Profile Audit failed on ${username}: ${err.message}`);
-      return this.getFallbackPayload(username);
+      return { success: false, error: err.message || 'audit_failed' };
     }
   }
 
@@ -208,48 +211,6 @@ class InstagramAnalyzer {
       logger.error(`[Instagram Analyzer] Dynamic login sequence exception: ${err.message}`);
       return false;
     }
-  }
-
-  getFallbackPayload(username) {
-    logger.info(`[Instagram Analyzer] Generating structured fallback for @${username}`);
-    return {
-      username,
-      display_name: username.replace(/_/g, ' '),
-      bio: 'Business profile details page.',
-      website: null,
-      bio_links: [],
-      followers: 1250,
-      following: 340,
-      posts_count: 58,
-      verified: false,
-      health_score: 75.0,
-      consistency_score: 80.0,
-      engagement_rate: 4.2,
-      posts: [
-        {
-          shortcode: 'mock1',
-          url: '#',
-          thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150',
-          caption: 'Building the next generation of automation tools! #startup #tech #coding',
-          hashtags: ['#startup', '#tech', '#coding'],
-          type: 'post',
-          likes_count: 120,
-          comments_count: 15,
-          date: new Date().toISOString()
-        },
-        {
-          shortcode: 'mock2',
-          url: '#',
-          thumbnail: 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=150',
-          caption: 'Consistency is the key to organic social media growth. #marketing #tips',
-          hashtags: ['#marketing', '#tips'],
-          type: 'post',
-          likes_count: 85,
-          comments_count: 8,
-          date: new Date(Date.now() - 86400000).toISOString()
-        }
-      ]
-    };
   }
 }
 

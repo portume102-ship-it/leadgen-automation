@@ -68,7 +68,13 @@ router.post('/instagram', async (req, res, next) => {
     pageId = pageObj.pageId;
 
     const report = await instagramAnalyzer.audit(pageObj.page, username, { timeframe, scrapeHistory, scrapeReels });
-    formatResponse(res, req, { report });
+    
+    if (report && report.success === false) {
+      const status = report.error === 'profile_not_found' ? 404 : 500;
+      res.status(status).json({ success: false, error: report.error });
+    } else {
+      formatResponse(res, req, { report });
+    }
   } catch (err) {
     next(err);
   } finally {
