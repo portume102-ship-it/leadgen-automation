@@ -73,6 +73,7 @@ export default function ScraperPage() {
   const [jobs, setJobs] = useState<ScrapeJob[]>([])
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [selectedJob, setSelectedJob] = useState<ScrapeJob | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
 
   // Fetch all jobs
   async function fetchJobs() {
@@ -81,6 +82,7 @@ export default function ScraperPage() {
       const data = await res.json()
       if (res.ok && data.jobs) {
         setJobs(data.jobs)
+        setIsPaused(!!data.isPaused)
         // Keep selected job in sync with poll
         if (selectedJob) {
           const updated = data.jobs.find((j: ScrapeJob) => j.id === selectedJob.id)
@@ -460,8 +462,12 @@ export default function ScraperPage() {
             <h3 className="font-bold text-[#1C1C1E] text-md mb-4 flex items-center justify-between uppercase tracking-wider text-[11px] text-gray-500">
               <span>⚡ Live Scraping Progress</span>
               {activeJob && (
-                <span className="flex items-center gap-1.5 text-[10px] text-green-600 font-bold uppercase tracking-wider animate-pulse bg-green-50 border border-green-200 px-2 py-0.5 rounded">
-                  Active
+                <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                  isPaused 
+                    ? 'text-yellow-600 bg-yellow-50 border-yellow-200' 
+                    : 'text-green-600 bg-green-50 border-green-200 animate-pulse'
+                }`}>
+                  {isPaused ? 'Paused' : 'Active'}
                 </span>
               )}
             </h3>
@@ -526,10 +532,14 @@ export default function ScraperPage() {
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handlePauseJob(activeJob.id)}
-                    className="flex-1 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-xs font-bold uppercase tracking-wider text-white py-3 transition-colors"
+                    onClick={() => isPaused ? handleResumeJob(activeJob.id) : handlePauseJob(activeJob.id)}
+                    className={`flex-1 rounded-xl text-xs font-bold uppercase tracking-wider text-white py-3 transition-colors ${
+                      isPaused 
+                        ? 'bg-green-600 hover:bg-green-700' 
+                        : 'bg-yellow-500 hover:bg-yellow-600'
+                    }`}
                   >
-                    ⏸️ Pause
+                    {isPaused ? '▶️ Resume' : '⏸️ Pause'}
                   </button>
                   <button
                     onClick={() => handleStopJob(activeJob.id)}

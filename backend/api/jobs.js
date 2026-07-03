@@ -30,7 +30,8 @@ function formatResponse(res, req, data = {}) {
 router.get('/', async (req, res, next) => {
   try {
     const list = await scrapeJobRepository.getAll();
-    formatResponse(res, req, { jobs: list });
+    const stats = await queueManager.stats();
+    formatResponse(res, req, { jobs: list, isPaused: stats.isPaused });
   } catch (err) {
     next(err);
   }
@@ -43,6 +44,9 @@ router.post('/start', async (req, res, next) => {
   }
 
   try {
+    // Automatically resume queue manager processing when queueing a new job
+    queueManager.resume();
+
     const finalKeyword = area && area.trim() ? `${keyword.trim()} [Area: ${area.trim()}]` : keyword.trim();
     const job = await queueManager.enqueue({
       keyword: finalKeyword,
@@ -63,7 +67,7 @@ router.post('/pause', async (req, res, next) => {
   if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
 
   try {
-    const success = await queueManager.pause(jobId);
+    queueManager.pause();
     formatResponse(res, req, { message: 'Queue processing paused.' });
   } catch (err) {
     next(err);
@@ -72,10 +76,9 @@ router.post('/pause', async (req, res, next) => {
 
 router.post('/resume', async (req, res, next) => {
   const { jobId } = req.body || {};
-  if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
-
+  // If no jobId, it's a global queue resume request
   try {
-    await queueManager.resume(jobId);
+    queueManager.resume();
     formatResponse(res, req, { message: 'Queue processing resumed.' });
   } catch (err) {
     next(err);
@@ -100,6 +103,8 @@ router.post('/retry', async (req, res, next) => {
   if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
 
   try {
+    // Automatically resume queue manager processing when retrying a job
+    queueManager.resume();
     const retriedJob = await queueManager.retry(jobId);
     formatResponse(res, req, { jobId: retriedJob.id, message: 'Retried job queued.' });
   } catch (err) {
