@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
   try {
     const targetUrl = new URL('https://api.search.tinyfish.ai')
     targetUrl.searchParams.append('query', query)
-    targetUrl.searchParams.append('location', location)
+    if (location && location !== 'global') {
+      targetUrl.searchParams.append('location', location)
+    }
     targetUrl.searchParams.append('language', language)
     targetUrl.searchParams.append('page', page)
 
