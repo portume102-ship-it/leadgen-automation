@@ -48,7 +48,19 @@ function extractContacts(text: string) {
 }
 
 export default function TinyFishPage() {
-  const [activeTab, setActiveTab] = useState<'search' | 'fetch'>('search')
+  const [activeTab, setActiveTab] = useState<'search' | 'fetch' | 'scraper'>('search')
+
+  // TinyFish Scraper States
+  const [scraperKeyword, setScraperKeyword] = useState('dentist')
+  const [scraperArea, setScraperArea] = useState('')
+  const [scraperCity, setScraperCity] = useState('Mumbai')
+  const [scraperCountry, setScraperCountry] = useState('')
+  const [scraperSearchScope, setScraperSearchScope] = useState<'city' | 'country' | 'global'>('city')
+  const [scraperMaxLeads, setScraperMaxLeads] = useState(10)
+  const [scraperIncludeEmails, setScraperIncludeEmails] = useState(true)
+  const [scraperJobs, setScraperJobs] = useState<any[]>([])
+  const [scraperQueuing, setScraperQueuing] = useState(false)
+  const [selectedScraperJob, setSelectedScraperJob] = useState<any | null>(null)
 
   // Search API States
   const [searchQuery, setSearchQuery] = useState('')
@@ -262,6 +274,85 @@ export default function TinyFishPage() {
   // Get active contacts for currently selected fetch result
   const activeContacts = selectedFetchResult ? extractContacts(selectedFetchResult.text) : null
 
+  async function fetchScraperJobs() {
+    try {
+      const res = await fetch('/api/scraper/jobs')
+      const data = await res.json()
+      if (res.ok && data.jobs) {
+        const tfJobs = data.jobs.filter((j: any) => j.current_provider?.includes('tinyfish'))
+        setScraperJobs(tfJobs)
+        if (selectedScraperJob) {
+          const updated = tfJobs.find((j: any) => j.id === selectedScraperJob.id)
+          if (updated) setSelectedScraperJob(updated)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch scraper jobs:', err)
+    }
+  }
+
+  async function handleQueueScraperJob(e: React.FormEvent) {
+    e.preventDefault()
+    if (!scraperKeyword.trim()) {
+      toast.error('Keyword is required')
+      return
+    }
+    if (scraperSearchScope === 'city' && !scraperCity.trim()) {
+      toast.error('City is required')
+      return
+    }
+    if (scraperSearchScope === 'country' && !scraperCountry.trim()) {
+      toast.error('Country is required')
+      return
+    }
+
+    setScraperQueuing(true)
+    const toastId = toast.loading('Queueing TinyFish scraper job...')
+    try {
+      const finalProvider = scraperIncludeEmails ? 'tinyfish:email' : 'tinyfish'
+      
+      let finalCity = scraperCity.trim()
+      if (scraperSearchScope === 'global') {
+        finalCity = 'Global'
+      } else if (scraperSearchScope === 'country') {
+        finalCity = `Country: ${scraperCountry.trim()}`
+      }
+
+      const res = await fetch('/api/scraper/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: scraperKeyword.trim(),
+          city: finalCity,
+          area: scraperSearchScope === 'global' ? undefined : (scraperArea.trim() || undefined),
+          maxLeads: scraperMaxLeads,
+          workerCount: 1,
+          provider: finalProvider
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to queue job')
+      }
+
+      toast.success('TinyFish scraper job successfully queued!', { id: toastId })
+      setScraperArea('')
+      fetchScraperJobs()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error starting job'
+      toast.error(msg, { id: toastId })
+    } finally {
+      setScraperQueuing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchScraperJobs()
+    const interval = setInterval(fetchScraperJobs, 5000)
+    return () => clearInterval(interval)
+  }, [selectedScraperJob])
+
   return (
     <div className="space-y-8 text-[#2D2D2D] select-none">
       {/* Header */}
@@ -299,6 +390,16 @@ export default function TinyFishPage() {
             }`}
           >
             📄 URL Fetcher
+          </button>
+          <button
+            onClick={() => setActiveTab('scraper')}
+            className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+              activeTab === 'scraper'
+                ? 'bg-[#1C1C1E] text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            🐠 Leads Scraper
           </button>
         </div>
       </div>
@@ -704,6 +805,251 @@ export default function TinyFishPage() {
                 <p className="text-xs text-gray-400 font-medium max-w-sm mt-1">
                   Enter some URLs in the left panel and click &ldquo;Fetch Page Contents&rdquo; to view the JS-rendered clean markdown output here.
                 </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'scraper' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left: Queue Scraper Job Form */}
+          <div className="lg:col-span-1 rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] space-y-4 h-fit">
+            <h3 className="font-bold text-[#1C1C1E] text-sm mb-2 uppercase tracking-wider text-[11px] text-gray-500">
+              🚀 Start TinyFish AI Scraper
+            </h3>
+            <form onSubmit={handleQueueScraperJob} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Keyword</label>
+                <input
+                  type="text"
+                  value={scraperKeyword}
+                  onChange={(e) => setScraperKeyword(e.target.value)}
+                  placeholder="e.g. dentist, software architect, ceo"
+                  required
+                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Search Scope</label>
+                <select
+                  value={scraperSearchScope}
+                  onChange={(e) => setScraperSearchScope(e.target.value as 'city' | 'country' | 'global')}
+                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-bold focus:outline-none focus:border-gray-500"
+                >
+                  <option value="city">🏙️ City Search</option>
+                  <option value="country">🌍 Country Search</option>
+                  <option value="global">🌐 Global Search</option>
+                </select>
+              </div>
+
+              {scraperSearchScope !== 'global' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Area (Optional)</label>
+                  <input
+                    type="text"
+                    value={scraperArea}
+                    onChange={(e) => setScraperArea(e.target.value)}
+                    placeholder="e.g. Andheri, Södermalm"
+                    className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
+                  />
+                </div>
+              )}
+
+              {scraperSearchScope === 'city' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">City</label>
+                  <input
+                    type="text"
+                    value={scraperCity}
+                    onChange={(e) => setScraperCity(e.target.value)}
+                    placeholder="e.g. Mumbai, Stockholm"
+                    required
+                    className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
+                  />
+                </div>
+              )}
+
+              {scraperSearchScope === 'country' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Country</label>
+                  <input
+                    type="text"
+                    value={scraperCountry}
+                    onChange={(e) => setScraperCountry(e.target.value)}
+                    placeholder="e.g. Sweden, India, Germany"
+                    required
+                    className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500 placeholder-gray-400"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Max Leads</label>
+                  <input
+                    type="number"
+                    value={scraperMaxLeads}
+                    onChange={(e) => setScraperMaxLeads(parseInt(e.target.value, 10) || 5)}
+                    min="1"
+                    max="50"
+                    className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold focus:outline-none focus:border-gray-500"
+                  />
+                </div>
+                <div className="flex flex-col justify-end pb-1.5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={scraperIncludeEmails}
+                      onChange={(e) => setScraperIncludeEmails(e.target.checked)}
+                      className="rounded border-[#E4E3DD] text-[#1C1C1E] focus:ring-0"
+                    />
+                    Find Emails
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={scraperQueuing}
+                className="w-full rounded-xl bg-[#1C1C1E] hover:bg-[#252528] disabled:opacity-40 text-xs font-bold uppercase tracking-wider text-white py-3.5 shadow-sm transition-colors"
+              >
+                {scraperQueuing ? 'Starting Scraper...' : '⚡ Launch TinyFish Scraper'}
+              </button>
+            </form>
+          </div>
+
+          {/* Right: Job List & Detail Views */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Scraper Job runs list */}
+            <div className="rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] space-y-3">
+              <h3 className="font-bold text-[#1C1C1E] text-sm uppercase tracking-wider text-[11px] text-gray-500">
+                🐠 TinyFish Scraper Job History
+              </h3>
+              {scraperJobs.length === 0 ? (
+                <div className="text-center py-8 text-xs text-gray-400 font-semibold">
+                  No TinyFish scraper runs found. Queue one using the left panel!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                  {scraperJobs.map((job) => {
+                    const isActive = selectedScraperJob?.id === job.id;
+                    const dateStr = new Date(job.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+                    return (
+                      <button
+                        key={job.id}
+                        onClick={() => setSelectedScraperJob(job)}
+                        className={`text-left p-4 rounded-xl border transition-all ${
+                          isActive
+                            ? 'border-[#E3B859] bg-[#E3B859]/10 text-gray-900 font-bold'
+                            : 'border-[#E4E3DD] hover:border-gray-400 hover:bg-[#F4F3EF]/30 text-gray-600'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="font-bold truncate text-xs text-gray-800">{job.keyword}</span>
+                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                            job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                            job.status === 'failed' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-800 animate-pulse'
+                          }`}>
+                            {job.status}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-semibold mt-1">
+                          📍 {job.city} · {dateStr}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Selected scraper job details (logs & live progress) */}
+            {selectedScraperJob && (
+              <div className="rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] space-y-4">
+                <div className="flex justify-between items-center border-b border-[#E4E3DD] pb-3">
+                  <div>
+                    <h4 className="font-black text-gray-800 text-sm">
+                      Job Details: {selectedScraperJob.keyword}
+                    </h4>
+                    <p className="text-[10px] text-gray-400 font-semibold">
+                      ID: {selectedScraperJob.id}
+                    </p>
+                  </div>
+                  <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                    selectedScraperJob.status === 'completed' ? 'bg-green-100 text-green-700' :
+                    selectedScraperJob.status === 'failed' ? 'bg-red-100 text-red-700' :
+                    'bg-yellow-100 text-yellow-750 animate-pulse'
+                  }`}>
+                    {selectedScraperJob.status}
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-bold text-gray-400">
+                    <span>PROGRESS</span>
+                    <span>{selectedScraperJob.progress || 0} / {selectedScraperJob.max_leads} Leads</span>
+                  </div>
+                  <div className="w-full bg-[#F4F3EF] rounded-full h-2">
+                    <div
+                      className="bg-[#E3B859] h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round(((selectedScraperJob.progress || 0) / selectedScraperJob.max_leads) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Scraper Terminal Logs */}
+                <div className="space-y-1">
+                  <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                    Execution Logs (Live Console)
+                  </span>
+                  <div className="bg-gray-900 text-green-400 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[10px] space-y-1 select-text">
+                    {(!selectedScraperJob.logs || selectedScraperJob.logs.length === 0) ? (
+                      <div className="text-gray-500">Initializing environment...</div>
+                    ) : (
+                      selectedScraperJob.logs.slice(-20).map((log: string, idx: number) => (
+                        <div key={idx} className="leading-relaxed">{log}</div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Scraped leads list */}
+                {selectedScraperJob.scraped_leads && selectedScraperJob.scraped_leads.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                      Scraped Profiles ({selectedScraperJob.scraped_leads.length})
+                    </span>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {selectedScraperJob.scraped_leads.map((lead: any, idx: number) => (
+                        <div key={idx} className="p-3 border border-[#E4E3DD] rounded-xl flex justify-between items-center bg-gray-50/20">
+                          <div>
+                            <div className="text-xs font-bold text-gray-800">{lead.name}</div>
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              📞 {lead.phone || 'No phone'} · 📧 {lead.email || 'No email'}
+                            </div>
+                            {lead.notes && (
+                              <div className="text-[9px] text-gray-500 mt-1 italic line-clamp-1">{lead.notes}</div>
+                            )}
+                          </div>
+                          {lead.website && (
+                            <a
+                              href={lead.website}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg border border-[#E4E3DD] hover:border-gray-500 bg-white px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors shrink-0"
+                            >
+                              Visit Site
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

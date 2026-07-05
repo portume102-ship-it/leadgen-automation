@@ -13,10 +13,14 @@ class TinyFishProvider {
   async search(page, query) {
     // Pure HTTP operation, bypass browser context entirely
     logger.info(`[TinyFish Provider] Performing search for keyword: "${query.keyword}"`);
-    const results = await tfSearch.search(query.keyword, {
-      location: query.city
+    let locationVal = 'global';
+    if (query.city && query.city !== 'Global') {
+      locationVal = query.city.replace('Country: ', '');
+    }
+    const response = await tfSearch.search(query.keyword, {
+      location: locationVal
     });
-    this.scrapedResults = results || [];
+    this.scrapedResults = (response && response.results) || [];
   }
 
   async collect(page, maxLeads) {
