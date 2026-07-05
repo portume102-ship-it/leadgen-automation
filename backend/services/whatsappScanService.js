@@ -62,6 +62,7 @@ async function runScan(filter = {}) {
   });
 
   addLog('WhatsApp scan started.');
+  addLog(`WhatsApp Service URL configured as: "${WHATSAPP_SERVICE_URL()}"`);
 
   try {
     // 1. Fetch unchecked leads (no [WhatsApp: Yes] or [WhatsApp: No] tag in notes)
