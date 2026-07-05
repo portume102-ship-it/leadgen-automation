@@ -20,7 +20,12 @@ router.get('/', (req, res) => {
       { id: 'google_maps', name: 'Google Maps Search', status: 'active', type: 'collection' },
       { id: 'google_search', name: 'Google Organic Discovery', status: 'active', type: 'discovery' },
       { id: 'instagram', name: 'Instagram Engagement Profiler', status: 'active', type: 'enrichment' },
-      { id: 'website', name: 'Website Auditer', status: 'active', type: 'enrichment' }
+      { id: 'website', name: 'Website Auditer', status: 'active', type: 'enrichment' },
+      { id: 'facebook', name: 'Facebook Discovery Scraper', status: 'active', type: 'collection' },
+      { id: 'reddit', name: 'Reddit Lead Discovery', status: 'active', type: 'discovery' },
+      { id: 'linkedin', name: 'LinkedIn via TinyFish Agent', status: 'active', type: 'collection' },
+      { id: 'tinyfish_search', name: 'TinyFish Search API', status: 'active', type: 'discovery' },
+      { id: 'tinyfish_fetch', name: 'TinyFish Fetch Page Renderer', status: 'active', type: 'discovery' }
     ]
   });
 });

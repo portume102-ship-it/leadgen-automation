@@ -10,6 +10,10 @@ const logger = require('./logger');
 
 const GoogleMapsProvider = require('../providers/googleMaps/provider');
 const GoogleSearchProvider = require('../providers/googleSearch/provider');
+const FacebookProvider = require('../providers/facebook/provider');
+const RedditProvider = require('../providers/reddit/provider');
+const LinkedInProvider = require('../providers/linkedin/provider');
+const TinyFishProvider = require('../providers/tinyfish/provider');
 const emailScraper = require('../services/emailScraper');
 
 class JobManager {
@@ -17,7 +21,11 @@ class JobManager {
     this.activeAborts = new Map(); // jobId -> boolean flag
     this.providers = {
       'google_maps': new GoogleMapsProvider(),
-      'google_search': new GoogleSearchProvider()
+      'google_search': new GoogleSearchProvider(),
+      'facebook': new FacebookProvider(),
+      'reddit': new RedditProvider(),
+      'linkedin': new LinkedInProvider(),
+      'tinyfish': new TinyFishProvider()
     };
   }
 

@@ -62,6 +62,42 @@ router.post('/start', async (req, res, next) => {
   }
 });
 
+router.post('/start-batch', async (req, res, next) => {
+  const { keywords, areas, city, maxLeads, workerCount, provider } = req.body || {};
+  if (!keywords || !Array.isArray(keywords) || keywords.length === 0 || !city) {
+    return res.status(400).json({ success: false, error: 'keywords (array) and city are required' });
+  }
+
+  try {
+    queueManager.resume();
+
+    const activeAreas = Array.isArray(areas) && areas.length > 0 ? areas : [null];
+    const createdJobs = [];
+
+    for (const kw of keywords) {
+      if (!kw || typeof kw !== 'string' || !kw.trim()) continue;
+      for (const area of activeAreas) {
+        const finalKeyword = area && area.trim() ? `${kw.trim()} [Area: ${area.trim()}]` : kw.trim();
+        const job = await queueManager.enqueue({
+          keyword: finalKeyword,
+          city,
+          max_leads: maxLeads || 25,
+          worker_count: workerCount || 1,
+          current_provider: provider || 'google_maps'
+        });
+        createdJobs.push({ jobId: job.id, keyword: finalKeyword });
+      }
+    }
+
+    formatResponse(res, req, {
+      message: `Batch job successfully queued. Spawned ${createdJobs.length} scrape jobs.`,
+      jobs: createdJobs
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/pause', async (req, res, next) => {
   const { jobId } = req.body || {};
   if (!jobId) return res.status(400).json({ success: false, error: 'jobId is required' });
