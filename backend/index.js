@@ -29,6 +29,7 @@ app.use('/api/discovery', require('./api/discovery'));
 app.use('/api/logs', require('./api/logs'));
 app.use('/api/leads', require('./api/leads'));
 app.use('/api/whatsapp-scan', require('./api/whatsappScan'));
+app.use('/api/outreach', require('./api/outreach'));
 
 // System diagnostic health endpoints
 app.get('/health', (_req, res) => {
