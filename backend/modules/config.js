@@ -1,8 +1,20 @@
 // backend/modules/config.js
 require('dotenv').config();
 
-const requiredEnv = ['DATABASE_URL'];
+// Derive connection string from SUPABASE_URL if DATABASE_URL is not set
+let derivedDatabaseUrl = process.env.DATABASE_URL;
+if (!derivedDatabaseUrl && process.env.SUPABASE_URL) {
+  const match = process.env.SUPABASE_URL.match(/https:\/\/([a-z0-9]+)\.supabase\.co/i);
+  if (match) {
+    const projectId = match[1];
+    derivedDatabaseUrl = `postgresql://postgres.${projectId}:HarrQ%21W%40%23E%24R@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres`;
+  }
+}
 
+const requiredEnv = [];
+if (!derivedDatabaseUrl) {
+  requiredEnv.push('DATABASE_URL');
+}
 if (process.env.NODE_ENV === 'production') {
   requiredEnv.push('GEMINI_API_KEY');
 }
@@ -16,7 +28,7 @@ for (const envName of requiredEnv) {
 const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3001', 10),
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: derivedDatabaseUrl,
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',

@@ -3,10 +3,12 @@ const { Pool } = require('pg');
 const logger = require('../worker/logger');
 require('dotenv').config();
 
-const connectionString = process.env.DATABASE_URL;
+const config = require('../modules/config');
+
+const connectionString = config.databaseUrl;
 
 if (!connectionString) {
-  logger.error('[Database] DATABASE_URL is not set in backend/.env!');
+  logger.error('[Database] Connection string is not set in environment or config fallbacks.');
 }
 
 const pool = new Pool({

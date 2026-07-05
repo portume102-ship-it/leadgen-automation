@@ -5,10 +5,12 @@ const path = require('path');
 const logger = require('../worker/logger');
 require('dotenv').config();
 
-const connectionString = process.env.DATABASE_URL;
+const config = require('../modules/config');
+
+const connectionString = config.databaseUrl;
 
 if (!connectionString) {
-  logger.error('[Migration Runner] DATABASE_URL environment variable is missing!');
+  logger.error('[Migration Runner] Connection string is not set in environment or config fallbacks.');
   process.exit(1);
 }
 
