@@ -41,6 +41,30 @@ app.get('/debug-env', (req, res) => {
   });
 });
 
+// Temp route to test internal domains on Railway
+app.get('/test-whatsapp-dns', async (req, res) => {
+  const targets = [
+    'http://whatsapp-service:3000',
+    'http://whatsapp-service:5000',
+    'http://whatsappservice:3000',
+    'http://leadgen-whatsapp-service:3000',
+    'http://leadgen-automation:3000',
+    'http://leadgen-automation:3001',
+  ];
+  
+  const results = {};
+  for (const t of targets) {
+    try {
+      const resp = await fetch(t + '/status', { signal: AbortSignal.timeout(2000) });
+      const text = await resp.text();
+      results[t] = { ok: resp.ok, status: resp.status, body: text.substring(0, 100) };
+    } catch (err) {
+      results[t] = { error: err.message };
+    }
+  }
+  res.json(results);
+});
+
 // System diagnostic health endpoints
 app.get('/health', (_req, res) => {
   const status = bootstrapManager.getSystemStatus();
