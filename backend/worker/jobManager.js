@@ -89,7 +89,21 @@ class JobManager {
 
         try {
           const raw = await provider.extract(page, i, job);
-          if (!raw) return;
+          if (!raw) {
+            // Real-time synchronization of discard logs to the database
+            const currentFresh = await scrapeJobRepository.getById(job.id);
+            const loopLogs = currentFresh ? (currentFresh.logs || []) : [];
+            const newLogs = [...loopLogs];
+            if (Array.isArray(job.logs)) {
+              for (const log of job.logs) {
+                if (!newLogs.includes(log)) {
+                  newLogs.push(log);
+                }
+              }
+            }
+            await scrapeJobRepository.update(job.id, { logs: newLogs });
+            return;
+          }
 
           const lead = provider.normalize(raw, job.city);
 
@@ -137,9 +151,16 @@ class JobManager {
           const avg = elapsed / scrapedLeads.length;
           const estRemaining = Math.round(avg * (limit - scrapedLeads.length));
 
-          // Single update: progress + accumulated leads
+          // Single update: progress + accumulated leads + logs
           const currentFresh = await scrapeJobRepository.getById(job.id);
           const loopLogs = currentFresh ? (currentFresh.logs || []) : [];
+          if (Array.isArray(job.logs)) {
+            for (const log of job.logs) {
+              if (!loopLogs.includes(log)) {
+                loopLogs.push(log);
+              }
+            }
+          }
           loopLogs.push(`[${new Date().toISOString()}] Extracted: ${lead.name} (${lead.phone || 'no phone'})`);
 
           await scrapeJobRepository.update(job.id, {
