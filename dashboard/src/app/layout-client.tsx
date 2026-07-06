@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Toaster } from 'react-hot-toast'
+import { usePathname, useRouter } from 'next/navigation'
+import toast, { Toaster } from 'react-hot-toast'
 
 interface LayoutClientProps {
   children: React.ReactNode
@@ -12,8 +12,25 @@ interface LayoutClientProps {
 
 export default function LayoutClient({ children }: LayoutClientProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Handle user logout
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/logout', { method: 'POST' })
+      if (res.ok) {
+        toast.success('Logged out successfully.')
+        router.push('/login')
+        router.refresh()
+      } else {
+        toast.error('Logout failed.')
+      }
+    } catch {
+      toast.error('Network error during logout.')
+    }
+  }
 
   // Fetch WhatsApp status
   async function checkWhatsappStatus() {
@@ -154,6 +171,15 @@ export default function LayoutClient({ children }: LayoutClientProps) {
         </div>
         <span className="mt-3 text-xs text-gray-500 font-semibold uppercase tracking-wider block">Welcome Back,</span>
         <span className="text-sm font-bold text-white tracking-tight mt-0.5">Operator LeadGen</span>
+        <button
+          onClick={handleLogout}
+          className="mt-3 px-3 py-1 bg-red-950/20 hover:bg-red-950/40 text-red-400 hover:text-red-300 font-semibold text-[10px] uppercase tracking-wider rounded-lg border border-red-900/30 transition-all duration-200 active:scale-95 flex items-center gap-1.5 focus:outline-none"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Logout
+        </button>
       </div>
 
       {/* Nav Menu */}
@@ -203,6 +229,15 @@ export default function LayoutClient({ children }: LayoutClientProps) {
       </div>
     </div>
   )
+
+  if (pathname === '/login') {
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1c1c1e', color: '#f3f4f6', border: '1px solid #2d2d30' } }} />
+        {children}
+      </>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#F4F3EF] text-[#2D2D2D] flex flex-col md:flex-row font-sans">
