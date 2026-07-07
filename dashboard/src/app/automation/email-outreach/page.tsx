@@ -86,8 +86,61 @@ export default function EmailOutreachPage() {
     }
   }, [selectedJobIds])
 
+  // Configuration Settings State
+  const [smtpUser, setSmtpUser] = useState('')
+  const [smtpPass, setSmtpPass] = useState('')
+  const [smtpFromName, setSmtpFromName] = useState('')
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [showConfig, setShowConfig] = useState(false)
+
+  // Load SMTP config on mount
+  const fetchSmtpSettings = async () => {
+    try {
+      const res = await fetch('/api/meta/settings')
+      const data = await res.json()
+      if (res.ok && data.settings) {
+        setSmtpUser(data.settings.SMTP_USER || '')
+        setSmtpPass(data.settings.SMTP_PASS || '')
+        setSmtpFromName(data.settings.SMTP_FROM_NAME || '')
+      }
+    } catch (err) {
+      console.error('Failed to load SMTP settings:', err)
+    }
+  }
+
+  const handleSaveSmtpSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSavingSettings(true)
+    const toastId = toast.loading('Saving email settings...')
+    try {
+      const res = await fetch('/api/meta/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            SMTP_USER: smtpUser.trim(),
+            SMTP_PASS: smtpPass.trim(),
+            SMTP_FROM_NAME: smtpFromName.trim()
+          }
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success('SMTP configuration saved!', { id: toastId })
+        fetchSmtpSettings()
+      } else {
+        throw new Error(data.error || 'Failed to save configuration')
+      }
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`, { id: toastId })
+    } finally {
+      setIsSavingSettings(false)
+    }
+  }
+
   useEffect(() => {
     fetchJobs()
+    fetchSmtpSettings()
   }, [])
 
   useEffect(() => {
@@ -259,54 +312,119 @@ export default function EmailOutreachPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Scraper Jobs List Selection */}
-        <div className="lg:col-span-1 rounded-2xl border border-[#2D2D30] bg-[#18181A]/60 backdrop-blur-md p-5 shadow-lg space-y-4 flex flex-col">
-          <div className="border-b border-[#2D2D30] pb-3">
-            <h2 className="text-xs font-black uppercase tracking-widest text-[#E3B859] flex items-center gap-2">
-              <span>🔍</span> Scraper Batches
-            </h2>
-            <p className="text-[10px] text-gray-500 mt-1">Select one or multiple jobs to retrieve scraped leads.</p>
-          </div>
-          
-          <div className="space-y-2.5 overflow-y-auto max-h-[450px] flex-1 pr-1">
-            {jobs.length === 0 ? (
-              <div className="text-center py-6 text-xs text-gray-500 font-bold uppercase tracking-wider">
-                No Scraper Jobs Found
+        <div className="lg:col-span-1 space-y-6">
+          {/* SMTP Configuration Module */}
+          <div className="rounded-2xl border border-[#2D2D30] bg-[#18181A]/60 backdrop-blur-md p-5 shadow-lg space-y-4">
+            <button 
+              type="button"
+              onClick={() => setShowConfig(!showConfig)}
+              className="w-full flex justify-between items-center border-b border-[#2D2D30] pb-3 text-left select-none group"
+            >
+              <div>
+                <h2 className="text-xs font-black uppercase tracking-widest text-[#E3B859] flex items-center gap-2">
+                  <span>⚙️</span> SMTP Configuration
+                </h2>
+                <p className="text-[9px] text-gray-500 mt-1">Configure sender accounts for email outreach.</p>
               </div>
-            ) : (
-              jobs.map(job => {
-                const isSelected = selectedJobIds.includes(job.id)
-                return (
-                  <div
-                    key={job.id}
-                    onClick={() => toggleJobSelection(job.id)}
-                    className={`p-3.5 rounded-xl border transition-all duration-300 cursor-pointer flex items-start gap-3 select-none ${
-                      isSelected 
-                        ? 'bg-[#222225] border-[#E3B859] text-white' 
-                        : 'bg-[#141416]/50 border-[#2D2D30] text-gray-400 hover:border-gray-500'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      readOnly
-                      className="mt-1 accent-[#E3B859] rounded cursor-pointer"
-                    />
-                    <div className="space-y-1">
-                      <div className="text-[11px] font-black uppercase tracking-wider leading-tight text-white line-clamp-1">
-                        {job.keyword}
-                      </div>
-                      <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-none">
-                        📍 {job.city}
-                      </div>
-                      <div className="text-[9px] text-gray-600 font-mono">
-                        {new Date(job.created_at).toLocaleDateString()}
+              <span className="text-gray-400 group-hover:text-white transition-colors text-xs">
+                {showConfig ? '▲' : '▼'}
+              </span>
+            </button>
+            
+            {showConfig && (
+              <form onSubmit={handleSaveSmtpSettings} className="space-y-3.5 pt-1">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Sender Email</label>
+                  <input
+                    type="email"
+                    value={smtpUser}
+                    onChange={(e) => setSmtpUser(e.target.value)}
+                    required
+                    placeholder="stratnent@gmail.com"
+                    className="w-full bg-[#101012] border border-[#2D2D30] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#E3B859] transition-colors"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Gmail App Password</label>
+                  <input
+                    type="password"
+                    value={smtpPass}
+                    onChange={(e) => setSmtpPass(e.target.value)}
+                    required
+                    placeholder="••••••••••••••••"
+                    className="w-full bg-[#101012] border border-[#2D2D30] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#E3B859] transition-colors"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Display Name</label>
+                  <input
+                    type="text"
+                    value={smtpFromName}
+                    onChange={(e) => setSmtpFromName(e.target.value)}
+                    placeholder="OUTREACH"
+                    className="w-full bg-[#101012] border border-[#2D2D30] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#E3B859] transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  className="w-full bg-[#E3B859] hover:bg-[#F0C973] disabled:opacity-40 disabled:cursor-not-allowed text-[#141416] py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 shadow-md"
+                >
+                  {isSavingSettings ? 'Saving...' : 'Save SMTP Settings'}
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* Scraper Jobs List Selection */}
+          <div className="rounded-2xl border border-[#2D2D30] bg-[#18181A]/60 backdrop-blur-md p-5 shadow-lg space-y-4 flex flex-col">
+            <div className="border-b border-[#2D2D30] pb-3">
+              <h2 className="text-xs font-black uppercase tracking-widest text-[#E3B859] flex items-center gap-2">
+                <span>🔍</span> Scraper Batches
+              </h2>
+              <p className="text-[10px] text-gray-500 mt-1">Select one or multiple jobs to retrieve scraped leads.</p>
+            </div>
+            
+            <div className="space-y-2.5 overflow-y-auto max-h-[450px] flex-1 pr-1">
+              {jobs.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-500 font-bold uppercase tracking-wider">
+                  No Scraper Jobs Found
+                </div>
+              ) : (
+                jobs.map(job => {
+                  const isSelected = selectedJobIds.includes(job.id)
+                  return (
+                    <div
+                      key={job.id}
+                      onClick={() => toggleJobSelection(job.id)}
+                      className={`p-3.5 rounded-xl border transition-all duration-300 cursor-pointer flex items-start gap-3 select-none ${
+                        isSelected 
+                          ? 'bg-[#222225] border-[#E3B859] text-white' 
+                          : 'bg-[#141416]/50 border-[#2D2D30] text-gray-400 hover:border-gray-500'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        className="mt-1 accent-[#E3B859] rounded cursor-pointer"
+                      />
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-black uppercase tracking-wider leading-tight text-white line-clamp-1">
+                          {job.keyword}
+                        </div>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-none">
+                          📍 {job.city}
+                        </div>
+                        <div className="text-[9px] text-gray-600 font-mono">
+                          {new Date(job.created_at).toLocaleDateString()}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })
-            )}
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
 

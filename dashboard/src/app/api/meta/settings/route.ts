@@ -17,6 +17,7 @@ export async function GET() {
     const SECRET_KEYS = new Set([
       'META_APP_SECRET', 'META_PAGE_ACCESS_TOKEN', 'META_VERIFY_TOKEN',
       'META_WEBHOOK_SECRET', 'META_LONG_LIVED_USER_TOKEN', 'META_SYSTEM_USER_TOKEN', 'WHATSAPP_PERMANENT_TOKEN',
+      'SMTP_PASS'
     ])
     const safeSettings: Record<string, string | boolean> = {}
     for (const [k, v] of Object.entries(merged)) {
