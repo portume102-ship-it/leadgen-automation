@@ -91,6 +91,15 @@ export default function LayoutClient({ children }: LayoutClientProps) {
       )
     },
     {
+      name: 'Social Automation',
+      href: '/automation',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      )
+    },
+    {
       name: 'Google Scraper',
       href: '/scraper',
       icon: (

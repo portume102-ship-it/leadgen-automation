@@ -37,6 +37,7 @@ app.use('/api/whatsapp-webhook', require('./api/whatsappWebhooks'));
 app.use('/api/docs', require('./api/docs'));
 app.use('/api/analytics', require('./api/analytics'));
 app.use('/api/workflows', require('./api/workflows'));
+app.use('/api/automation/accounts', require('./api/automationAccounts'));
 
 // System diagnostic health endpoints
 app.get('/health', (_req, res) => {
