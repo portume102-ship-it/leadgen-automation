@@ -249,7 +249,7 @@ export default function LayoutClient({ children }: LayoutClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F3EF] text-[#2D2D2D] flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-[#141416] text-[#2D2D2D] flex flex-col md:flex-row font-sans">
       <Toaster position="top-right" toastOptions={{ duration: 4000, style: { background: '#1c1c1e', color: '#f3f4f6', border: '1px solid #2d2d30' } }} />
 
       {/* Mobile Top Bar */}
@@ -298,7 +298,7 @@ export default function LayoutClient({ children }: LayoutClientProps) {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-x-hidden min-w-0">
-        <div className="px-4 py-6 md:px-8 md:py-8 max-w-7xl mx-auto">
+        <div className="min-h-screen">
           {children}
         </div>
       </main>
