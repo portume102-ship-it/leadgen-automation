@@ -6,8 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:meta": "node scripts/meta/run-all.js",
+    "test:meta:status": "node scripts/meta/status.test.js",
+    "test:meta:facebook": "node scripts/meta/facebook.test.js",
+    "test:meta:instagram": "node scripts/meta/instagram.test.js",
+    "test:meta:messenger": "node scripts/meta/messenger.test.js",
+    "test:meta:oauth": "node scripts/meta/oauth.test.js",
+    "test:meta:permissions": "node scripts/meta/permissions.test.js",
+    "test:meta:webhook": "node scripts/meta/webhook.test.js",
+    "test:meta:publish": "node scripts/meta/publish.test.js",
+    "test:meta:comments": "node scripts/meta/comments.test.js",
+    "test:meta:insights": "node scripts/meta/insights.test.js",
+    "test:meta:integration": "node scripts/meta/integration.test.js"
   },
+
   "dependencies": {
     "@supabase/supabase-js": "^2",
     "date-fns": "^4.4.0",

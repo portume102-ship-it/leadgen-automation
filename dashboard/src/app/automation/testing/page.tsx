@@ -1,214 +1,402 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import toast from 'react-hot-toast'
 
-interface TestLog {
+interface TestResult {
   target: string
-  status: 'success' | 'error' | 'pending'
-  duration: number
-  request: Record<string, unknown>
-  response: Record<string, unknown>
-  timestamp: string
+  label: string
+  status: 'success' | 'error' | 'pending' | 'idle'
+  httpCode?: number
+  duration?: number
+  graphResponse?: Record<string, unknown>
+  errorMessage?: string
+  logs?: string[]
+  endpoint?: string
+  timestamp?: string
 }
 
-const TEST_ACTIONS = [
-  { id: 'meta_app', label: 'Test Meta App', icon: '🔵', desc: 'Validates App ID & Secret connectivity.' },
-  { id: 'facebook', label: 'Test Facebook Page', icon: '📘', desc: 'Fetches page info from Graph API.' },
-  { id: 'instagram', label: 'Test Instagram', icon: '📸', desc: 'Fetches IG business profile details.' },
-  { id: 'messenger', label: 'Test Messenger', icon: '💬', desc: 'Checks Messenger webhook subscription.' },
-  { id: 'webhook', label: 'Test Webhook', icon: '🔗', desc: 'Fires a test Meta webhook ping.' },
-  { id: 'oauth', label: 'Test OAuth', icon: '🔑', desc: 'Validates OAuth token status and scopes.' },
-  { id: 'permissions', label: 'Test Permissions', icon: '🛡️', desc: 'Lists all granted Graph API permissions.' },
-  { id: 'post_facebook', label: 'Test FB Post', icon: '📝', desc: 'Posts a test message to Facebook Page feed.' },
-  { id: 'post_instagram', label: 'Test IG Post', icon: '🖼️', desc: 'Creates a test Instagram media container.' },
-  { id: 'dm_instagram', label: 'Test IG DM', icon: '✉️', desc: 'Sends a test DM via Instagram messaging.' },
+const TEST_SUITES = [
+  {
+    group: 'Meta Platform',
+    icon: '🔵',
+    tests: [
+      { id: 'meta_app',     label: 'Test Meta App',          desc: 'Validates App ID & Secret via /app endpoint.' },
+      { id: 'oauth',        label: 'Test OAuth Token',        desc: 'Debugs and validates the Page Access Token.' },
+      { id: 'permissions',  label: 'Test Permissions',        desc: 'Lists all granted Graph API scopes.' },
+    ]
+  },
+  {
+    group: 'Facebook',
+    icon: '📘',
+    tests: [
+      { id: 'facebook',     label: 'Test FB Connection',     desc: 'Fetches page info from Graph API.' },
+      { id: 'post_facebook',label: 'Test FB Post List',      desc: 'Loads recent posts from Page feed.' },
+      { id: 'fb_insights',  label: 'Test FB Insights',       desc: 'Reads page_impressions & engagement metrics.' },
+    ]
+  },
+  {
+    group: 'Messenger',
+    icon: '💬',
+    tests: [
+      { id: 'messenger',        label: 'Test Messenger',       desc: 'Checks Messenger subscription on the page.' },
+      { id: 'messenger_inbox',  label: 'Test Messenger Inbox', desc: 'Reads first 5 page conversations.' },
+    ]
+  },
+  {
+    group: 'Instagram',
+    icon: '📸',
+    tests: [
+      { id: 'instagram',        label: 'Test IG Connection',   desc: 'Fetches IG business profile details.' },
+      { id: 'ig_media',         label: 'Test IG Media',        desc: 'Loads recent IG posts and reels.' },
+      { id: 'dm_instagram',     label: 'Test IG DM',           desc: 'Reads Instagram DM conversations.' },
+      { id: 'ig_insights',      label: 'Test IG Insights',     desc: 'Reads impressions, reach, followers.' },
+    ]
+  },
+  {
+    group: 'Publishing',
+    icon: '📤',
+    tests: [
+      { id: 'post_instagram',   label: 'Test IG Post Container', desc: 'Creates test IG media container (no publish).' },
+    ]
+  },
+  {
+    group: 'Webhooks & Graph API',
+    icon: '🔗',
+    tests: [
+      { id: 'webhook',   label: 'Test Webhook Verify',  desc: 'Fires challenge verification handshake.' },
+      { id: 'graph_api', label: 'Test Graph API',       desc: 'Raw /me ping via Graph API v23.0.' },
+    ]
+  },
 ]
 
-export default function TestingPage() {
-  const [logs, setLogs] = useState<TestLog[]>([])
-  const [running, setRunning] = useState<string | null>(null)
-  const [selectedLog, setSelectedLog] = useState<TestLog | null>(null)
+const ALL_TESTS = TEST_SUITES.flatMap(s => s.tests)
 
-  async function runTest(target: string) {
-    setRunning(target)
-    const start = Date.now()
+function buildEndpointLabel(target: string): string {
+  const map: Record<string, string> = {
+    meta_app: '/api/meta/test → Graph /app',
+    oauth: '/api/meta/oauth → debug_token',
+    permissions: '/api/meta/permissions → /me/permissions',
+    facebook: '/api/meta/facebook/page',
+    post_facebook: '/api/meta/facebook/post?limit=5',
+    fb_insights: '/api/meta/facebook/insights',
+    messenger: '/api/meta/test → messenger',
+    messenger_inbox: '/api/meta/facebook/messages?limit=5',
+    instagram: '/api/meta/instagram/profile',
+    ig_media: '/api/meta/instagram/media?limit=5',
+    dm_instagram: '/api/meta/instagram/messages?limit=5',
+    ig_insights: '/api/meta/instagram/insights',
+    post_instagram: '/api/meta/test → post_instagram',
+    webhook: '/api/meta/webhook → challenge',
+    graph_api: '/api/meta/test → graph_api',
+  }
+  return map[target] || `/api/meta/test?target=${target}`
+}
 
-    // Optimistically add pending log
-    const pendingLog: TestLog = {
-      target,
-      status: 'pending',
-      duration: 0,
-      request: { endpoint: `/api/meta/test`, params: { target } },
-      response: {},
-      timestamp: new Date().toISOString()
-    }
-    setLogs(prev => [pendingLog, ...prev])
+function StatusBadge({ status }: { status: TestResult['status'] }) {
+  const styles: Record<string, string> = {
+    success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    error:   'bg-red-500/20 text-red-300 border border-red-500/30',
+    pending: 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse',
+    idle:    'bg-white/10 text-white/40 border border-white/10',
+  }
+  const labels: Record<string, string> = { success: '✅ PASS', error: '❌ FAIL', pending: '⏳ Running…', idle: '○ Idle' }
+  return (
+    <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${styles[status]}`}>
+      {labels[status]}
+    </span>
+  )
+}
 
-    try {
-      const res = await fetch(`/api/meta/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target })
-      })
-      const data = await res.json()
-      const duration = Date.now() - start
+async function runTest(target: string): Promise<TestResult> {
+  const start = Date.now()
+  const testItem = ALL_TESTS.find(t => t.id === target)
+  const label = testItem?.label || target
 
-      const log: TestLog = {
-        target,
-        status: res.ok ? 'success' : 'error',
-        duration,
-        request: { method: 'POST', endpoint: `/api/meta/test`, body: { target } },
-        response: data,
-        timestamp: new Date().toISOString()
-      }
-
-      setLogs(prev => [log, ...prev.filter(l => !(l.target === target && l.status === 'pending'))])
-      setSelectedLog(log)
-
-      if (res.ok) toast.success(`${target} test passed! (${duration}ms)`)
-      else toast.error(`${target} test failed.`)
-    } catch {
-      const duration = Date.now() - start
-      const log: TestLog = {
-        target,
-        status: 'error',
-        duration,
-        request: { method: 'POST', endpoint: `/api/meta/test`, body: { target } },
-        response: { error: 'Network error or API unreachable.' },
-        timestamp: new Date().toISOString()
-      }
-      setLogs(prev => [log, ...prev.filter(l => !(l.target === target && l.status === 'pending'))])
-      setSelectedLog(log)
-      toast.error(`${target} test errored.`)
-    } finally {
-      setRunning(null)
-    }
+  // Route by target
+  const routeMap: Record<string, { method: string; url: string; body?: Record<string, unknown> }> = {
+    facebook:       { method: 'GET', url: '/api/meta/facebook/page' },
+    post_facebook:  { method: 'GET', url: '/api/meta/facebook/post?limit=5' },
+    fb_insights:    { method: 'GET', url: '/api/meta/facebook/insights' },
+    instagram:      { method: 'GET', url: '/api/meta/instagram/profile' },
+    ig_media:       { method: 'GET', url: '/api/meta/instagram/media?limit=5' },
+    dm_instagram:   { method: 'GET', url: '/api/meta/instagram/messages?limit=5' },
+    ig_insights:    { method: 'GET', url: '/api/meta/instagram/insights' },
+    messenger_inbox:{ method: 'GET', url: '/api/meta/facebook/messages?limit=5' },
+    oauth:          { method: 'GET', url: '/api/meta/oauth?action=validate' },
+    permissions:    { method: 'GET', url: '/api/meta/permissions' },
   }
 
+  let httpCode = 0
+  let graphResponse: Record<string, unknown> = {}
+  let errorMessage: string | undefined
+  const logs: string[] = []
+
+  try {
+    const route = routeMap[target]
+    let res: Response
+    let data: Record<string, unknown> = {}
+
+    if (route) {
+      res = await fetch(route.url, {
+        method: route.method,
+        ...(route.body ? { body: JSON.stringify(route.body), headers: { 'Content-Type': 'application/json' } } : {}),
+      })
+      data = await res.json().catch(() => ({}))
+      httpCode = res.status
+    } else {
+      // Fallback: use test endpoint
+      res = await fetch('/api/meta/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target }),
+      })
+      data = await res.json().catch(() => ({}))
+      httpCode = res.status
+    }
+
+    const duration = Date.now() - start
+    graphResponse = data as Record<string, unknown>
+    logs.push(`→ ${buildEndpointLabel(target)}`)
+    logs.push(`← HTTP ${httpCode} (${duration}ms)`)
+
+    const hasError = !!data?.error || !data?.success
+    if (data?.error) {
+      const err = data.error as Record<string, unknown>
+      errorMessage = (err?.message as string) || JSON.stringify(err)
+      logs.push(`Graph Error: ${errorMessage}`)
+    }
+
+    return {
+      target, label,
+      status: !hasError ? 'success' : 'error',
+      httpCode, duration,
+      graphResponse, errorMessage,
+      logs,
+      endpoint: buildEndpointLabel(target),
+      timestamp: new Date().toISOString(),
+    }
+  } catch (e: unknown) {
+    return {
+      target, label,
+      status: 'error',
+      httpCode: 0,
+      duration: Date.now() - start,
+      graphResponse: {},
+      errorMessage: e instanceof Error ? e.message : 'Unknown error',
+      logs: [`→ ${buildEndpointLabel(target)}`, `✖ Network error: ${e instanceof Error ? e.message : 'Unknown'}`],
+      endpoint: buildEndpointLabel(target),
+      timestamp: new Date().toISOString(),
+    }
+  }
+}
+
+export default function TestingPage() {
+  const [results, setResults] = useState<Record<string, TestResult>>({})
+  const [running, setRunning] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [runningAll, setRunningAll] = useState(false)
+
+  const execute = useCallback(async (target: string) => {
+    if (running || runningAll) return
+    setRunning(target)
+    setSelected(target)
+    setResults(prev => ({ ...prev, [target]: { target, label: ALL_TESTS.find(t=>t.id===target)?.label || target, status: 'pending' } }))
+    const result = await runTest(target)
+    setResults(prev => ({ ...prev, [target]: result }))
+    setRunning(null)
+    if (result.status === 'success') toast.success(`${result.label} passed`)
+    else toast.error(`${result.label} failed`)
+  }, [running, runningAll])
+
+  const runAll = useCallback(async () => {
+    if (running || runningAll) return
+    setRunningAll(true)
+    for (const t of ALL_TESTS) {
+      setRunning(t.id)
+      setResults(prev => ({ ...prev, [t.id]: { target: t.id, label: t.label, status: 'pending' } }))
+      const result = await runTest(t.id)
+      setResults(prev => ({ ...prev, [t.id]: result }))
+      await new Promise(r => setTimeout(r, 200))
+    }
+    setRunning(null)
+    setRunningAll(false)
+    toast.success('All tests completed')
+  }, [running, runningAll])
+
+  const selectedResult = selected ? results[selected] : null
+  const passCount = Object.values(results).filter(r => r.status === 'success').length
+  const failCount = Object.values(results).filter(r => r.status === 'error').length
+  const totalRan = passCount + failCount
+
   return (
-    <div className="space-y-6 text-white select-none">
+    <div className="min-h-screen bg-[#0a0a0f] text-white">
       {/* Header */}
-      <div className="border-b border-[#2D2D30] pb-6">
-        <h1 className="text-3xl font-black tracking-tight">🧪 API Test Console</h1>
-        <p className="mt-1 text-sm text-gray-500">Run live diagnostics against your Meta Graph API connections and view raw request/response payloads.</p>
+      <div className="border-b border-white/10 px-8 py-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Meta API Test Center</h1>
+            <p className="text-sm text-white/50 mt-1">Live diagnostics against Graph API v23.0 — all calls hit real endpoints</p>
+          </div>
+          <div className="flex items-center gap-4">
+            {totalRan > 0 && (
+              <div className="flex gap-3 text-sm font-mono">
+                <span className="text-emerald-400">✅ {passCount}</span>
+                <span className="text-white/20">|</span>
+                <span className="text-red-400">❌ {failCount}</span>
+                <span className="text-white/20">|</span>
+                <span className="text-white/60">{totalRan}/{ALL_TESTS.length}</span>
+              </div>
+            )}
+            <button
+              id="run-all-tests"
+              onClick={runAll}
+              disabled={!!running || runningAll}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all"
+            >
+              {runningAll ? '⏳ Running All…' : '▶ Run All Tests'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Test Buttons */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Test Actions</h2>
-          {TEST_ACTIONS.map(action => (
-            <button
-              key={action.id}
-              onClick={() => runTest(action.id)}
-              disabled={running === action.id}
-              className={`w-full p-4 rounded-xl border text-left transition-all group ${
-                running === action.id
-                  ? 'bg-purple-950/30 border-purple-800/40 opacity-60 cursor-not-allowed'
-                  : 'bg-[#18181A] border-[#2D2D30] hover:border-gray-500 hover:bg-[#1E1E20]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">{action.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-bold text-white block">{action.label}</span>
-                  <span className="text-[10px] text-gray-500">{action.desc}</span>
-                </div>
-                {running === action.id && (
-                  <span className="text-[10px] text-purple-400 font-bold uppercase animate-pulse">Running...</span>
-                )}
+      <div className="max-w-7xl mx-auto px-8 py-8 grid grid-cols-[380px,1fr] gap-8">
+        {/* Left: test list */}
+        <div className="space-y-6">
+          {TEST_SUITES.map(suite => (
+            <div key={suite.group}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">{suite.icon}</span>
+                <span className="text-xs font-semibold text-white/40 uppercase tracking-widest">{suite.group}</span>
               </div>
-            </button>
+              <div className="space-y-2">
+                {suite.tests.map(t => {
+                  const r = results[t.id]
+                  const isRunning = running === t.id
+                  const isSelected = selected === t.id
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => { if (!isRunning) setSelected(t.id) }}
+                      className={`group rounded-xl border p-3.5 cursor-pointer transition-all ${
+                        isSelected
+                          ? 'border-blue-500/50 bg-blue-500/10'
+                          : 'border-white/8 bg-white/4 hover:border-white/20 hover:bg-white/8'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-white/90 truncate">{t.label}</span>
+                        {r ? <StatusBadge status={r.status} /> : <StatusBadge status="idle" />}
+                      </div>
+                      <p className="text-xs text-white/35 mt-1 leading-snug">{t.desc}</p>
+                      <div className="flex items-center justify-between mt-2.5">
+                        <code className="text-[10px] text-white/25 truncate max-w-[180px]">{buildEndpointLabel(t.id)}</code>
+                        <button
+                          id={`run-${t.id}`}
+                          onClick={e => { e.stopPropagation(); execute(t.id) }}
+                          disabled={!!running || runningAll}
+                          className="text-[11px] font-semibold px-3 py-1 rounded-lg bg-white/8 hover:bg-white/15 disabled:opacity-30 transition-all"
+                        >
+                          {isRunning ? '⏳' : '▶ Run'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           ))}
         </div>
 
-        {/* Log list */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Execution Log ({logs.length})</h2>
-            {logs.length > 0 && (
-              <button
-                onClick={() => setLogs([])}
-                className="text-[10px] text-gray-500 hover:text-red-400 font-bold uppercase tracking-wider"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-            {logs.length === 0 ? (
-              <div className="text-center py-8 text-gray-600 text-xs">No tests run yet.</div>
-            ) : logs.map((log, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedLog(log)}
-                className={`w-full p-3 rounded-xl border text-left transition-colors ${
-                  selectedLog === log ? 'border-gray-500 bg-[#1E1E20]' : 'border-[#2D2D30] bg-[#18181A] hover:border-gray-600'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    log.status === 'success' ? 'bg-green-500' :
-                    log.status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-bold text-white block">{log.target}</span>
-                    <span className="text-[10px] text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    log.status === 'success' ? 'text-green-400' :
-                    log.status === 'error' ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    {log.status === 'pending' ? '...' : `${log.duration}ms`}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Detail Pane */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Payload Inspector</h2>
-          {selectedLog ? (
-            <div className="space-y-3">
-              <div className={`flex items-center gap-2 p-3 rounded-xl border ${
-                selectedLog.status === 'success'
-                  ? 'bg-green-950/30 border-green-900/40'
-                  : selectedLog.status === 'error'
-                    ? 'bg-red-950/30 border-red-900/40'
-                    : 'bg-yellow-950/30 border-yellow-900/40'
+        {/* Right: result panel */}
+        <div className="sticky top-8 h-fit">
+          {selectedResult ? (
+            <div className="rounded-2xl border border-white/10 bg-white/4 overflow-hidden">
+              {/* Result header */}
+              <div className={`px-6 py-4 border-b border-white/10 flex items-center justify-between ${
+                selectedResult.status === 'success' ? 'bg-emerald-500/10' :
+                selectedResult.status === 'error' ? 'bg-red-500/10' :
+                selectedResult.status === 'pending' ? 'bg-amber-500/10' : ''
               }`}>
-                <span className={`w-2 h-2 rounded-full ${
-                  selectedLog.status === 'success' ? 'bg-green-500' :
-                  selectedLog.status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'
-                }`} />
-                <span className={`text-xs font-bold uppercase tracking-wider ${
-                  selectedLog.status === 'success' ? 'text-green-400' :
-                  selectedLog.status === 'error' ? 'text-red-400' : 'text-yellow-400'
-                }`}>{selectedLog.status}</span>
-                <span className="text-gray-500 text-xs ml-auto">{selectedLog.duration}ms</span>
+                <div>
+                  <h2 className="font-bold text-white text-lg">{selectedResult.label}</h2>
+                  <p className="text-xs text-white/40 font-mono mt-0.5">{selectedResult.endpoint}</p>
+                </div>
+                <StatusBadge status={selectedResult.status} />
               </div>
 
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Request</span>
-                <pre className="bg-[#0E0E10] border border-[#2D2D30] rounded-xl p-3 text-[10px] text-gray-300 font-mono overflow-auto max-h-40">
-{JSON.stringify(selectedLog.request, null, 2)}
-                </pre>
-              </div>
+              {/* Metrics row */}
+              {selectedResult.status !== 'idle' && selectedResult.status !== 'pending' && (
+                <div className="grid grid-cols-3 divide-x divide-white/8 border-b border-white/8">
+                  {[
+                    { label: 'HTTP Code', value: selectedResult.httpCode ?? '–' },
+                    { label: 'Latency',   value: selectedResult.duration ? `${selectedResult.duration}ms` : '–' },
+                    { label: 'Status',    value: selectedResult.status === 'success' ? 'Pass' : 'Fail' },
+                  ].map(m => (
+                    <div key={m.label} className="px-6 py-3 text-center">
+                      <div className="text-xs text-white/40 mb-1">{m.label}</div>
+                      <div className={`text-lg font-bold font-mono ${
+                        m.label === 'HTTP Code' && Number(m.value) >= 400 ? 'text-red-400' :
+                        m.label === 'HTTP Code' && Number(m.value) >= 200 ? 'text-emerald-400' :
+                        'text-white'
+                      }`}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Response</span>
-                <pre className="bg-[#0E0E10] border border-[#2D2D30] rounded-xl p-3 text-[10px] text-gray-300 font-mono overflow-auto max-h-40">
-{JSON.stringify(selectedLog.response, null, 2)}
-                </pre>
+              <div className="p-6 space-y-4">
+                {/* Logs */}
+                {selectedResult.logs && selectedResult.logs.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">Request Log</div>
+                    <div className="bg-black/30 rounded-xl p-3 font-mono text-xs space-y-1">
+                      {selectedResult.logs.map((log, i) => (
+                        <div key={i} className={log.startsWith('→') ? 'text-blue-300' : log.startsWith('←') ? 'text-emerald-300' : 'text-red-300'}>
+                          {log}
+                        </div>
+                      ))}
+                      {selectedResult.timestamp && (
+                        <div className="text-white/20 pt-1">{selectedResult.timestamp}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Error */}
+                {selectedResult.errorMessage && (
+                  <div>
+                    <div className="text-xs font-semibold text-red-400/60 uppercase tracking-widest mb-2">Graph Error</div>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 font-mono text-xs text-red-300">
+                      {selectedResult.errorMessage}
+                    </div>
+                  </div>
+                )}
+
+                {/* Response */}
+                {selectedResult.graphResponse && Object.keys(selectedResult.graphResponse).length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">Graph Response</div>
+                    <pre className="bg-black/30 rounded-xl p-3 font-mono text-xs text-white/70 overflow-auto max-h-72">
+                      {JSON.stringify(selectedResult.graphResponse, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Pending */}
+                {selectedResult.status === 'pending' && (
+                  <div className="flex items-center gap-3 text-amber-300">
+                    <span className="animate-spin">⏳</span>
+                    <span className="text-sm">Calling Graph API…</span>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-48 text-gray-600 text-xs">
-              <span className="text-4xl mb-3">🔬</span>
-              <p>Run a test to see the payload inspector.</p>
+            <div className="rounded-2xl border border-white/8 bg-white/4 p-8 text-center">
+              <div className="text-4xl mb-4">🔬</div>
+              <h3 className="text-white/60 font-medium">Select a test to run</h3>
+              <p className="text-white/30 text-sm mt-2">Click any test on the left, or use Run All to execute the full suite.</p>
             </div>
           )}
         </div>
