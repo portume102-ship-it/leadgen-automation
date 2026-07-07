@@ -26,6 +26,9 @@ function buildNodemailerTransport() {
       user: gmailUser,
       pass: gmailPass,   // Gmail App Password (not your normal password)
     },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 5000,
   });
 }
 
