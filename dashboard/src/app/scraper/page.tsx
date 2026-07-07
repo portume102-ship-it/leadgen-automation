@@ -80,10 +80,35 @@ export default function ScraperPage() {
   const [selectedJob, setSelectedJob] = useState<ScrapeJob | null>(null)
   const [isPaused, setIsPaused] = useState(false)
 
+  // API Routing Configurations
+  const [primaryBackend, setPrimaryBackend] = useState('')
+  const [secondaryBackend, setSecondaryBackend] = useState('')
+  const [backendMode, setBackendMode] = useState<'primary' | 'secondary' | 'both'>('primary')
+
+  // Helper fetch wrapper to attach routing headers from localStorage/state
+  async function fetchWithRouting(url: string, options: RequestInit = {}) {
+    const headers = {
+      ...(options.headers || {}),
+      'x-backend-primary': typeof window !== 'undefined' ? (localStorage.getItem('scraper_primary_backend') || '') : '',
+      'x-backend-secondary': typeof window !== 'undefined' ? (localStorage.getItem('scraper_secondary_backend') || '') : '',
+      'x-backend-mode': typeof window !== 'undefined' ? (localStorage.getItem('scraper_backend_mode') || 'primary') : 'primary'
+    }
+    return fetch(url, { ...options, headers })
+  }
+
+  // Load routing configuration from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setPrimaryBackend(localStorage.getItem('scraper_primary_backend') || '')
+      setSecondaryBackend(localStorage.getItem('scraper_secondary_backend') || '')
+      setBackendMode((localStorage.getItem('scraper_backend_mode') as 'primary' | 'secondary' | 'both') || 'primary')
+    }
+  }, [])
+
   // Fetch all jobs
   async function fetchJobs() {
     try {
-      const res = await fetch('/api/scraper/jobs')
+      const res = await fetchWithRouting('/api/scraper/jobs')
       const data = await res.json()
       if (res.ok && data.jobs) {
         setJobs(data.jobs)
@@ -105,7 +130,7 @@ export default function ScraperPage() {
     fetchJobs()
     const interval = setInterval(fetchJobs, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedJob])
 
   // Queue a new job
   async function handleQueueJob(e: React.FormEvent) {
@@ -138,7 +163,7 @@ export default function ScraperPage() {
         finalCity = `Country: ${country.trim()}`
       }
 
-      const res = await fetch('/api/scraper/start', {
+      const res = await fetchWithRouting('/api/scraper/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +196,7 @@ export default function ScraperPage() {
   // Pause a job
   async function handlePauseJob(jobId: string) {
     try {
-      const res = await fetch('/api/scraper/pause', {
+      const res = await fetchWithRouting('/api/scraper/pause', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId })
@@ -188,7 +213,7 @@ export default function ScraperPage() {
   // Resume a job
   async function handleResumeJob(jobId: string) {
     try {
-      const res = await fetch('/api/scraper/resume', {
+      const res = await fetchWithRouting('/api/scraper/resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId })
@@ -205,7 +230,7 @@ export default function ScraperPage() {
   // Stop a job
   async function handleStopJob(jobId: string) {
     try {
-      const res = await fetch('/api/scraper/stop', {
+      const res = await fetchWithRouting('/api/scraper/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId })
@@ -222,7 +247,7 @@ export default function ScraperPage() {
   // Retry / Clone a job
   async function handleRetryJob(jobId: string) {
     try {
-      const res = await fetch('/api/scraper/retry', {
+      const res = await fetchWithRouting('/api/scraper/retry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId })
@@ -288,6 +313,17 @@ export default function ScraperPage() {
       toast.error(message, { id: toastId })
     } finally {
       setAddingLead(false)
+    }
+  }
+
+  function handleSaveBackendSettings(e: React.FormEvent) {
+    e.preventDefault()
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('scraper_primary_backend', primaryBackend.trim())
+      localStorage.setItem('scraper_secondary_backend', secondaryBackend.trim())
+      localStorage.setItem('scraper_backend_mode', backendMode)
+      toast.success('API Routing configurations successfully updated and saved!')
+      fetchJobs() // reload job lists using the new configured target URLs
     }
   }
 
@@ -543,6 +579,55 @@ export default function ScraperPage() {
                 className="flex items-center justify-center gap-2 w-full rounded-xl bg-gray-100 hover:bg-[#202022] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold uppercase tracking-wider text-gray-700 py-3.5 transition-all"
               >
                 Add Lead
+              </button>
+            </form>
+          </div>
+
+          {/* API Backend Config Card */}
+          <div className="rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)]">
+            <h3 className="font-bold text-[#1C1C1E] text-md mb-1 uppercase tracking-wider text-[11px] text-gray-500">🔌 API Backend Routing</h3>
+            <p className="text-[10px] text-gray-400 mb-4 font-medium">Configure primary and secondary API targets</p>
+            <form onSubmit={handleSaveBackendSettings} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Primary Backend URL</label>
+                <input
+                  type="url"
+                  value={primaryBackend}
+                  onChange={(e) => setPrimaryBackend(e.target.value)}
+                  placeholder="e.g. http://localhost:3001"
+                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Secondary Backend URL</label>
+                <input
+                  type="url"
+                  value={secondaryBackend}
+                  onChange={(e) => setSecondaryBackend(e.target.value)}
+                  placeholder="e.g. http://localhost:3002"
+                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-semibold placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Active Target Routing Mode</label>
+                <select
+                  value={backendMode}
+                  onChange={(e) => setBackendMode(e.target.value as 'primary' | 'secondary' | 'both')}
+                  className="w-full rounded-xl bg-[#F4F3EF] border border-[#E4E3DD] px-3.5 py-2.5 text-xs text-[#2D2D2D] font-bold focus:outline-none focus:border-gray-500"
+                >
+                  <option value="primary">🎯 Primary Server Only</option>
+                  <option value="secondary">🥈 Secondary Server Only</option>
+                  <option value="both">⚡ Dual Broadcast (Both Servers)</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-[#1C1C1E] hover:bg-[#252528] text-xs font-bold uppercase tracking-wider text-white py-3.5 mt-2 transition-all shadow-sm"
+              >
+                Save Settings
               </button>
             </form>
           </div>
