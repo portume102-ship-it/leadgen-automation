@@ -12,76 +12,78 @@
       "name": "Meta Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [100, 300]
+      "position": [100, 300],
+      "webhookId": "meta-communication-inbound"
     },
     {
       "parameters": {
         "conditions": {
-          "string": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "value1": "={{ $json.body.object }}",
-              "operation": "isNotEmpty"
+              "id": "cond-001",
+              "leftValue": "={{ $json.body.object }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         }
       },
       "id": "e4f8a1b2-1002-4000-8000-000000000002",
       "name": "Validate Request",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [280, 300]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/accounts/credentials",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"platform\": \"={{ $json.body.entry[0].messaging ? 'messenger' : ($json.body.entry[0].changes ? 'whatsapp' : 'instagram') }}\",\n  \"page_id\": \"={{ $json.body.entry[0].id }}\"\n}",
-        "options": {}
+        "respondWith": "json",
+        "responseBody": "={\n  \"error\": \"Invalid webhook payload — missing object field.\"\n}",
+        "options": {
+          "responseCode": 400
+        }
       },
-      "id": "e4f8a1b2-1003-4000-8000-000000000003",
-      "name": "Fetch Safe Credentials",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [480, 200]
+      "id": "e4f8a1b2-100f-4000-8000-000000000009",
+      "name": "Reject Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [480, 480]
     },
     {
       "parameters": {
         "dataType": "string",
-        "value1": "={{ $json.body.entry[0].messaging ? 'messenger' : ($json.body.entry[0].changes ? 'whatsapp' : 'instagram') }}",
+        "value1": "={{ $json.body.object }}",
         "rules": {
           "rules": [
             {
-              "value2": "messenger",
-              "output": 1
+              "value2": "page",
+              "output": 0
             },
             {
               "value2": "instagram",
-              "output": 2
+              "output": 1
             },
             {
-              "value2": "whatsapp",
-              "output": 3
+              "value2": "whatsapp_business_account",
+              "output": 2
             }
           ]
         },
-        "fallbackOutput": 1
+        "fallbackOutput": 0
       },
       "id": "e4f8a1b2-1004-4000-8000-000000000004",
-      "name": "Platform Router Switch",
+      "name": "Platform Router",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [680, 200]
+      "typeVersion": 3,
+      "position": [480, 280]
     },
     {
       "parameters": {
@@ -93,19 +95,25 @@
             {
               "name": "x-api-secret",
               "value": "={{ $env.API_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"event\": \"inbound_message\",\n  \"payload\": {\n    \"body\": \"={{ $json.body.entry[0].messaging[0].message.text }}\",\n    \"channel\": \"messenger\",\n    \"sender\": \"={{ $json.body.entry[0].messaging[0].sender.id }}\"\n  }\n}",
-        "options": {}
+        "jsonBody": "={\n  \"event\": \"messenger_message\",\n  \"object\": \"page\",\n  \"entry\": {{ JSON.stringify($json.body.entry) }},\n  \"channel\": \"messenger\",\n  \"sender_id\": \"={{ $json.body.entry?.[0]?.messaging?.[0]?.sender?.id }}\",\n  \"message_text\": \"={{ $json.body.entry?.[0]?.messaging?.[0]?.message?.text }}\",\n  \"page_id\": \"={{ $json.body.entry?.[0]?.id }}\",\n  \"timestamp\": {{ Date.now() }}\n}",
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "e4f8a1b2-1005-4000-8000-000000000005",
-      "name": "Process Messenger & AI",
+      "name": "Handle Messenger",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 100]
+      "position": [720, 140]
     },
     {
       "parameters": {
@@ -117,19 +125,25 @@
             {
               "name": "x-api-secret",
               "value": "={{ $env.API_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"event\": \"inbound_message\",\n  \"payload\": {\n    \"body\": \"={{ $json.body.entry[0].messaging[0].message.text }}\",\n    \"channel\": \"instagram\",\n    \"sender\": \"={{ $json.body.entry[0].messaging[0].sender.id }}\"\n  }\n}",
-        "options": {}
+        "jsonBody": "={\n  \"event\": \"instagram_message\",\n  \"object\": \"instagram\",\n  \"entry\": {{ JSON.stringify($json.body.entry) }},\n  \"channel\": \"instagram\",\n  \"sender_id\": \"={{ $json.body.entry?.[0]?.messaging?.[0]?.sender?.id }}\",\n  \"message_text\": \"={{ $json.body.entry?.[0]?.messaging?.[0]?.message?.text }}\",\n  \"ig_business_id\": \"={{ $json.body.entry?.[0]?.id }}\",\n  \"timestamp\": {{ Date.now() }}\n}",
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "e4f8a1b2-1006-4000-8000-000000000006",
-      "name": "Process Instagram & AI",
+      "name": "Handle Instagram DM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 250]
+      "position": [720, 300]
     },
     {
       "parameters": {
@@ -141,31 +155,37 @@
             {
               "name": "x-api-secret",
               "value": "={{ $env.API_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"event\": \"inbound_message\",\n  \"payload\": {\n    \"body\": \"={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}\",\n    \"channel\": \"whatsapp\",\n    \"sender\": \"={{ $json.body.entry[0].changes[0].value.messages[0].from }}\"\n  }\n}",
-        "options": {}
+        "jsonBody": "={\n  \"event\": \"whatsapp_message\",\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": {{ JSON.stringify($json.body.entry) }},\n  \"channel\": \"whatsapp\",\n  \"sender_phone\": \"={{ $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from }}\",\n  \"message_text\": \"={{ $json.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body }}\",\n  \"waba_id\": \"={{ $json.body.entry?.[0]?.id }}\",\n  \"timestamp\": {{ Date.now() }}\n}",
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "e4f8a1b2-1007-4000-8000-000000000007",
-      "name": "Process WhatsApp & AI",
+      "name": "Handle WhatsApp",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 400]
+      "position": [720, 460]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{\n  \"status\": \"success\",\n  \"received\": true\n}",
+        "responseBody": "={\n  \"status\": \"received\",\n  \"channel\": \"meta\",\n  \"processed_at\": \"{{ new Date().toISOString() }}\"\n}",
         "options": {}
       },
       "id": "e4f8a1b2-1008-4000-8000-000000000008",
-      "name": "Respond to Hook",
+      "name": "Respond 200 OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1150, 250]
+      "position": [960, 300]
     }
   ],
   "connections": {
@@ -174,6 +194,7 @@
         [
           {
             "node": "Validate Request",
+            "type": "main",
             "index": 0
           }
         ]
@@ -183,69 +204,73 @@
       "main": [
         [
           {
-            "node": "Fetch Safe Credentials",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Safe Credentials": {
-      "main": [
-        [
-          {
-            "node": "Platform Router Switch",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Platform Router Switch": {
-      "main": [
-        [
-          {
-            "node": "Process Messenger & AI",
+            "node": "Platform Router",
+            "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Process Instagram & AI",
+            "node": "Reject Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Platform Router": {
+      "main": [
+        [
+          {
+            "node": "Handle Messenger",
+            "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Process WhatsApp & AI",
+            "node": "Handle Instagram DM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle WhatsApp",
+            "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Messenger & AI": {
+    "Handle Messenger": {
       "main": [
         [
           {
-            "node": "Respond to Hook",
+            "node": "Respond 200 OK",
+            "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Instagram & AI": {
+    "Handle Instagram DM": {
       "main": [
         [
           {
-            "node": "Respond to Hook",
+            "node": "Respond 200 OK",
+            "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process WhatsApp & AI": {
+    "Handle WhatsApp": {
       "main": [
         [
           {
-            "node": "Respond to Hook",
+            "node": "Respond 200 OK",
+            "type": "main",
             "index": 0
           }
         ]
@@ -253,6 +278,19 @@
     }
   },
   "active": true,
-  "settings": {},
-  "versionId": "e4f8a1b2-1000-4000-8000-000000000000"
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "e4f8a1b2-1000-4000-8001-000000000000",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "flowfyp-production"
+  },
+  "tags": [
+    { "id": "meta-integration", "name": "Meta Integration" },
+    { "id": "communication", "name": "Communication" }
+  ]
 }

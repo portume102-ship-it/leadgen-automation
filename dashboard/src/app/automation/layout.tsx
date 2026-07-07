@@ -111,8 +111,10 @@ export default function AutomationLayout({ children }: AutomationLayoutProps) {
               ]},
               { label: 'System Operations', items: [
                 { name: 'Connected Accounts', href: '/automation/accounts', icon: '🔑' },
-                { name: 'n8n Workflow Jobs', href: '/automation/workflows', icon: '⚙️' },
+                { name: 'Meta Settings', href: '/automation/settings/meta', icon: '⚙️' },
+                { name: 'n8n Workflow Jobs', href: '/automation/workflows', icon: '🔄' },
                 { name: 'System Health', href: '/automation/health', icon: '🩺' },
+                { name: 'API Test Console', href: '/automation/testing', icon: '🧪' },
                 { name: 'Activity Logs', href: '/automation/logs', icon: '📋' },
                 { name: 'System Docs', href: '/automation/docs', icon: '📖' },
                 { name: 'Module Settings', href: '/automation/settings', icon: '⚙️' },
