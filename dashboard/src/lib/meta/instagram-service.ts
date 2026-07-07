@@ -52,7 +52,7 @@ export const InstagramService = {
     MetaLogger.response(SOURCE, '/me/messages', res.statusCode, res.duration, res.error as MetaApiResponse['error'])
     return res
   },
-  async getInsights(metric = 'impressions,reach,follower_count', period = 'day') {
+  async getInsights(metric = 'reach,profile_views,follower_count', period = 'day') {
     const igId = getIgBizId(); const token = getPageToken()
     const endpoint = `/${igId}/insights?metric=${metric}&period=${period}&access_token=${token}`
     return MetaClient.get<{ data: unknown[] }>(endpoint, { source: SOURCE })

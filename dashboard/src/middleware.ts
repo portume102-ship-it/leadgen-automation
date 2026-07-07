@@ -5,10 +5,13 @@ export function middleware(request: NextRequest) {
   const session = request.cookies.get('zarss_session')
   const { pathname } = request.nextUrl
 
-  // Skip static assets, Next internals, api/login, and the login page itself
+  // Skip static assets, Next internals, api/login, login page, and Meta webhook
+  // IMPORTANT: /api/meta/webhook MUST be public — Meta sends unauthenticated GET challenges
+  // and POST events. Any auth gate here will break webhook verification and event delivery.
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/login') ||
+    pathname.startsWith('/api/meta/webhook') ||
     pathname.startsWith('/favicon.ico') ||
     pathname.startsWith('/fonts') ||
     pathname === '/login'

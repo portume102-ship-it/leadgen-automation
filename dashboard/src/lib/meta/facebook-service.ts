@@ -51,7 +51,7 @@ export const FacebookService = {
     const token = getPageToken()
     return MetaClient.delete<{ success: boolean }>(`/${postId}?access_token=${token}`, { source: SOURCE })
   },
-  async getInsights(metric = 'page_impressions,page_engagements,page_fan_adds', period = 'day') {
+  async getInsights(metric = 'page_total_actions,page_views_total,page_follows', period = 'day') {
     const pageId = getPageId(); const token = getPageToken()
     const endpoint = `/${pageId}/insights?metric=${metric}&period=${period}&access_token=${token}`
     MetaLogger.request(SOURCE, 'GET', endpoint)
