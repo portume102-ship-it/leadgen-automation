@@ -88,7 +88,12 @@ router.post('/email/send-single', async (req, res, next) => {
     'hassanmansuri570@gmail.com',
     'hmansuri882@gmail.com',
     'mansurihh@rknec.edu',
-    'hassanmansuri379@gmail.com'
+    'hassanmansuri379@gmail.com',
+    'fgdgb62@gmail.com',
+    'forhassan57@gmail.com',
+    'sheikhafsana710@gmail.com',
+    'whsofttech2026@gmail.com',
+    'ayanmansuri0404@gmail.com'
   ];
 
   let recipient = to;

@@ -8,7 +8,12 @@ const ALLOWED_TEST_EMAILS = [
   'hassanmansuri570@gmail.com',
   'hmansuri882@gmail.com',
   'mansurihh@rknec.edu',
-  'hassanmansuri379@gmail.com'
+  'hassanmansuri379@gmail.com',
+  'fgdgb62@gmail.com',
+  'forhassan57@gmail.com',
+  'sheikhafsana710@gmail.com',
+  'whsofttech2026@gmail.com',
+  'ayanmansuri0404@gmail.com'
 ]
 
 export async function POST(req: NextRequest) {
