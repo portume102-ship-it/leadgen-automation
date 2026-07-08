@@ -57,6 +57,13 @@ app.get('/health/system', (_req, res) => {
   res.json(bootstrapManager.getSystemStatus());
 });
 
+app.get('/health/env-check', (req, res) => {
+  res.json({
+    SUPABASE_URL_defined: !!process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY_defined: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+});
+
 // Liveness probe
 app.get('/health/live', (_req, res) => {
   res.json({ status: 'live', timestamp: new Date().toISOString() });
