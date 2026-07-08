@@ -141,4 +141,4 @@ async function sendEmail({ to, subject, html, text }) {
   };
 }
 
-module.exports = { sendEmail };
+module.exports = { sendEmail, getSMTPConfigFromDB, supabase };

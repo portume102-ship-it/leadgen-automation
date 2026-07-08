@@ -81,43 +81,44 @@ app.get('/health/smtp-check', async (req, res) => {
 });
 
 app.get('/health/smtp-send-check', async (req, res) => {
-  const { sendEmail } = require('./services/emailService');
-  let dbConfig = null;
-  let catchErr = null;
+  const emailService = require('./services/emailService');
+  let serviceConfig = null;
+  let serviceErr = null;
+  
   try {
-    const supabase = require('./database/connection');
-    const { data, error } = await supabase
-      .from('meta_config')
-      .select('key, value')
-      .in('key', ['SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_NAME']);
-      
+    const data = await emailService.getSMTPConfigFromDB();
     if (data) {
-      const config = {};
-      data.forEach(row => {
-        config[row.key] = row.value;
-      });
-      dbConfig = {
-        user: config.SMTP_USER,
-        pass_exists: !!config.SMTP_PASS,
-        fromName: config.SMTP_FROM_NAME
+      serviceConfig = {
+        user: data.user,
+        pass_exists: !!data.pass,
+        fromName: data.fromName
       };
-    }
-    if (error) {
-      catchErr = error.message;
+    } else {
+      serviceConfig = 'returned null';
     }
   } catch (err) {
-    catchErr = err.message;
+    serviceErr = err.message;
   }
 
   try {
-    const result = await sendEmail({
+    const result = await emailService.sendEmail({
       to: 'mansurihh@rknec.edu',
       subject: 'production test diagnostic',
       html: 'testing'
     });
-    res.json({ result, dbConfig, catchErr });
+    res.json({
+      result,
+      serviceConfig,
+      serviceErr,
+      supabase_in_service_is_null: !emailService.supabase
+    });
   } catch (err) {
-    res.json({ send_error: err.message, dbConfig, catchErr });
+    res.json({
+      send_error: err.message,
+      serviceConfig,
+      serviceErr,
+      supabase_in_service_is_null: !emailService.supabase
+    });
   }
 });
 
