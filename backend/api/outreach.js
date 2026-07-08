@@ -105,8 +105,43 @@ router.post('/email/send-single', async (req, res, next) => {
   }
 
   const emailService = require('../services/emailService');
-  logger.info({ to: recipient, subject }, '[Outreach API] Sending email via unified service...');
+  const database = require('../database/connection');
+  const axios = require('axios');
 
+  // Check if we have VERCEL_DASHBOARD_URL set in DB to proxy the email request
+  let vercelUrl = null;
+  if (database) {
+    try {
+      const { data } = await database
+        .from('meta_config')
+        .select('value')
+        .eq('key', 'VERCEL_DASHBOARD_URL')
+        .maybeSingle();
+      if (data && data.value) {
+        vercelUrl = data.value.trim().replace(/\/+$/, '');
+      }
+    } catch (dbErr) {
+      logger.warn(`[Outreach API] Failed to fetch VERCEL_DASHBOARD_URL from DB: ${dbErr.message}`);
+    }
+  }
+
+  // If Vercel URL is configured, proxy the send request to Vercel (to bypass Railway SMTP blocks)
+  if (vercelUrl) {
+    logger.info({ to: recipient, vercelUrl }, '[Outreach API] Proxying send-single email request to Vercel NextJS endpoint...');
+    try {
+      const response = await axios.post(`${vercelUrl}/api/email/send`, {
+        to: recipient,
+        subject,
+        html: body
+      }, { timeout: 15000 });
+      logger.info(`[Outreach API] Proxy send successful via Vercel provider: ${response.data.provider}`);
+      return res.json(response.data);
+    } catch (err) {
+      logger.warn(`[Outreach API] Proxy to Vercel failed: ${err.message}. Falling back to local send...`);
+    }
+  }
+
+  logger.info({ to: recipient, subject }, '[Outreach API] Sending email locally via unified service...');
   try {
     const result = await emailService.sendEmail({
       to: recipient,
