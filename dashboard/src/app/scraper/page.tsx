@@ -87,9 +87,12 @@ export default function ScraperPage() {
 
   // Helper fetch wrapper to attach routing headers from localStorage/state
   async function fetchWithRouting(url: string, options: RequestInit = {}) {
+    const savedPrimary = typeof window !== 'undefined' ? localStorage.getItem('scraper_primary_backend') : null
+    const primaryUrl = savedPrimary !== null && savedPrimary.trim() !== '' ? savedPrimary.trim() : 'https://scraper-auto.up.railway.app'
+    
     const headers = {
       ...(options.headers || {}),
-      'x-backend-primary': typeof window !== 'undefined' ? (localStorage.getItem('scraper_primary_backend') || '') : '',
+      'x-backend-primary': primaryUrl,
       'x-backend-secondary': typeof window !== 'undefined' ? (localStorage.getItem('scraper_secondary_backend') || '') : '',
       'x-backend-mode': typeof window !== 'undefined' ? (localStorage.getItem('scraper_backend_mode') || 'primary') : 'primary'
     }
@@ -99,7 +102,8 @@ export default function ScraperPage() {
   // Load routing configuration from localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setPrimaryBackend(localStorage.getItem('scraper_primary_backend') || '')
+      const savedPrimary = localStorage.getItem('scraper_primary_backend')
+      setPrimaryBackend(savedPrimary !== null && savedPrimary.trim() !== '' ? savedPrimary.trim() : 'https://scraper-auto.up.railway.app')
       setSecondaryBackend(localStorage.getItem('scraper_secondary_backend') || '')
       setBackendMode((localStorage.getItem('scraper_backend_mode') as 'primary' | 'secondary' | 'both') || 'primary')
     }

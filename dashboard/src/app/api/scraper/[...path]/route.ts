@@ -26,6 +26,14 @@ function resolveBackendPath(subPath: string): string {
   return `/api/jobs/${subPath}`
 }
 
+function getValidUrl(url: string | null): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (trimmed === '' || trimmed === 'undefined' || trimmed === 'null') return null
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return null
+  return trimmed
+}
+
 async function proxyRequest(req: NextRequest, params: { path: string[] }, method: 'GET' | 'POST') {
   const subPath = params.path.join('/')
   const backendPath = resolveBackendPath(subPath)
@@ -40,8 +48,12 @@ async function proxyRequest(req: NextRequest, params: { path: string[] }, method
   }
 
   // Get routing inputs from frontend custom headers
-  const primaryUrl = req.headers.get('x-backend-primary') || process.env.V3_BACKEND_URL || dbBackendUrl || process.env.WHATSAPP_SERVICE_URL || 'https://scraper-auto.up.railway.app'
-  const secondaryUrl = req.headers.get('x-backend-secondary') || ''
+  const primaryUrl = getValidUrl(req.headers.get('x-backend-primary')) || 
+                     getValidUrl(process.env.V3_BACKEND_URL) || 
+                     getValidUrl(dbBackendUrl) || 
+                     getValidUrl(process.env.WHATSAPP_SERVICE_URL) || 
+                     'https://scraper-auto.up.railway.app'
+  const secondaryUrl = getValidUrl(req.headers.get('x-backend-secondary')) || ''
   const mode = req.headers.get('x-backend-mode') || 'primary'
 
   const cleanUrl = (url: string) => url.replace(/\/$/, '')

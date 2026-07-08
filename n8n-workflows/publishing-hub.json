@@ -21,13 +21,13 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/workflows/publish/queue?status=scheduled",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/automation/workflows/publish/queue?status=scheduled",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },
@@ -82,13 +82,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/accounts/credentials",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/automation/accounts/credentials",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },
@@ -183,13 +183,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/workflows/publish/queue/callback",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/automation/workflows/publish/queue/callback",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },

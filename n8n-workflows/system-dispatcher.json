@@ -91,13 +91,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/workflows/orchestrate",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/workflows/orchestrate",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             },
             {
               "name": "Content-Type",
@@ -121,13 +121,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/workflows/retry",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/automation/workflows/retry",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },
@@ -147,13 +147,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/automation/workflows/publish/queue",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/automation/workflows/publish/queue",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },
@@ -173,13 +173,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_URL }}/api/workflows/orchestrate",
+        "url": "https://leadgen-automation-production-12c6.up.railway.app/api/workflows/orchestrate",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-secret",
-              "value": "={{ $env.API_SECRET }}"
+              "value": "27pwgfjvq491aircy8lh6nz3eb5mkus0"
             }
           ]
         },
